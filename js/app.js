@@ -1342,6 +1342,9 @@ var FI={
   cinnamon:{n:'Ground cinnamon',c:'Cupboard',u:'g',pk:40,pl:'jar',k:0,p:0},
   nuts:{n:'Mixed nuts (unsalted)',c:'Cupboard',u:'g',pk:200,pl:'200g bag',k:640,p:20},
   whey:{n:'Whey protein powder',c:'Cupboard',u:'g',pk:1000,pl:'1kg bag',k:380,p:73},
+  yoghurt:{n:'Greek yoghurt, 0\u20132% fat',c:'Fridge',u:'g',pk:500,pl:'500g tub',k:65,p:10,shelf:7,tip:'Strained Greek yoghurt such as Fage Total 0% or 2%, or a supermarket fat-free Greek yoghurt. \u201cGreek-style\u201d yoghurt has about half the protein.'},
+  berries:{n:'Frozen mixed berries',c:'Freezer',u:'g',pk:500,pl:'500g bag',k:35,p:1},
+  granola:{n:'Granola',c:'Cupboard',u:'g',pk:500,pl:'500g box',k:440,p:9,tip:'Any plain or nutty granola. The figures are typical; very sweet clusters can be higher.'},
   creatine:{n:'Creatine monohydrate',c:'Cupboard',u:'g',pk:250,pl:'250g tub',k:0,p:0,opt:true},
   rice:{n:'Long-grain rice',c:'Cupboard',u:'g',pk:1000,pl:'1kg bag',k:350,p:7},
   pasta:{n:'Dried pasta (any shape)',c:'Cupboard',u:'g',pk:500,pl:'500g bag',k:355,p:12.5},
@@ -1357,7 +1360,7 @@ var FR={
   porridge:{n:'Porridge with peanut butter, honey & seeds',t:'4 min',ing:[['oats',80],['milk',300],['pb',15],['honey',10],['seeds',15],['cinnamon',1],['creatine',5]],steps:['Put the oats and milk in a large microwaveable bowl (it bubbles up, so go bigger than you think).','Microwave on high for 2 min, stir, then 1 more min until thick. Leave it 1 min to settle.','Top with 1 tbsp peanut butter, 2 tsp honey, 1 tbsp seeds and a pinch of cinnamon.','Stir in 5g creatine if you’re taking it. It has no taste.']},
   banana_nuts:{n:'Banana and mixed nuts',t:'0 min',ing:[['banana',1],['nuts',30]],steps:['Bag up 30g of nuts the night before so it’s grab-and-go.']},
   freezer_lunch:{n:'Freezer lunch and an apple',t:'3 min',ing:[],steps:['Take it to work frozen in the morning; by lunch it’s mostly thawed.','Burrito: unwrap, wrap in kitchen paper, microwave 1–1½ min if thawed or 2½–3 min from frozen, turning halfway.','Burrito bowl: lid ajar, microwave 2 min if thawed or 3–4 min from frozen, stirring halfway until piping hot.'],src:['Reluctant Entertainer: freezer burritos','https://reluctantentertainer.com/freezer-burrito-recipe/']},
-  pm_shake:{n:'Protein shake',t:'1 min',ing:[['whey',30],['milk',300]],steps:['Shake 1 scoop (30g) of whey with 300ml cold milk for 20 seconds.','Have it mid-afternoon, or straight after the gym on training days.']},
+  pm_yoghurt:{n:'Greek yoghurt with berries & granola',t:'2 min',ing:[['yoghurt',200],['berries',80],['granola',50]],steps:['In the morning, spoon 200g of Greek yoghurt into a lidded tub and tip 80g of frozen berries on top. They keep it cold and are thawed by the afternoon. Use the work fridge if there is one.','Take 50g of granola in a separate small bag or pot so it stays crunchy, and stir it in when you eat.','Have it mid-afternoon, or straight after the gym on training days.']},
   eggs_beans:{n:'Scrambled eggs on toast with beans',t:'8 min',ing:[['eggs',3],['bread',2],['bakedbeans',1]],steps:['Tip the beans into a bowl, cover, and microwave 2–3 min, stirring halfway.','Whisk the 3 eggs with a pinch of salt and pepper.','Toast 2 slices from frozen.','Heat a non-stick pan on low with a little oil. Add the eggs and stir slowly for 2–3 min, taking them off while they still look slightly wet. They finish cooking on the plate.']},
   fuel:{n:'Toast with honey',t:'2 min',ing:[['bread',2],['honey',20]],steps:['Toast 2 slices from frozen and drizzle with honey.','Have it 1–2 hours before your run. Quick carbs so you’re fuelled for the hard bits.']},
   d_honeychicken:{n:'Honey-soy chicken stir-fry with rice',t:'20 min',ing:[['chicken',200],['pepper',1],['broccoli',150],['garlic',1],['soy',20],['honey',15],['oil',10],['rice',90]],steps:['Start the rice first: rinse 90g rice and boil it in plenty of salted water for 10\u201312 min, then drain.','Mix the sauce: 2 tbsp soy sauce, 1 tbsp honey, 1 crushed garlic clove and 2 tbsp water.','Cut the defrosted chicken into bite-sized pieces. Slice the pepper and cut the broccoli into small florets.','Heat the oil in a wok or large frying pan on high. Stir-fry the chicken for 5–6 min until golden.','Add the pepper, broccoli and a splash of water. Stir-fry 3–4 min until just tender.','Pour in the sauce and let it bubble for about 2 min until it’s sticky and coats the chicken. Check there’s no pink in the middle.','Serve over the rice.'],src:['BBC Good Food: honey chicken','https://bbcgoodfoodme.com/recipes/honey-chicken']},
@@ -1406,7 +1409,7 @@ function syncDinners(){
   return ch;
 }
 function dayPlan(ds){
-  var d=dayIdx(parse(ds)),t=trainOn(ds),sw=(state.food&&state.food.swaps)||{},p={bfast:'porridge',am:'banana_nuts',lunch:d<5?'freezer_lunch':'eggs_beans',pm:'pm_shake',fuel:t.run?'fuel':null,dinner:(sw[ds]&&FR[sw[ds]])?sw[ds]:baseDinner(ds),dropped:[]};
+  var d=dayIdx(parse(ds)),t=trainOn(ds),sw=(state.food&&state.food.swaps)||{},p={bfast:'porridge',am:'banana_nuts',lunch:d<5?'freezer_lunch':'eggs_beans',pm:'pm_yoghurt',fuel:t.run?'fuel':null,dinner:(sw[ds]&&FR[sw[ds]])?sw[ds]:baseDinner(ds),dropped:[]};
   var tgt=fBurn(ds).target,tot=0,pro=0,tp=protTarget();
   FSLOTS.forEach(function(s){if(p[s[0]]){var nn=mealNut(p[s[0]],{burrito:1});tot+=nn.k;pro+=nn.p;}});
   ['am','pm'].forEach(function(sl){var nn=mealNut(p[sl],{burrito:1});if(tot-nn.k>=tgt-100&&pro-nn.p>=tp){p.dropped.push(sl);tot-=nn.k;pro-=nn.p;p[sl]=null;}});
@@ -1650,7 +1653,7 @@ function renderFoodDay(){
   var tt=dayTotals(ds,plan,mk,st,mode),eatK=tt.eatK,eatP=tt.eatP,planK=tt.planK,planP=tt.planP;
   var bn=fBurn(ds);
   h+='<div class="card">'+(mode==='future'?nutRow(planK,planP,bn.target,protTarget()):nutRow(eatK,eatP,bn.target,protTarget()))+
-    (plan.dropped.length?'<div class="hint" style="margin:0 0 6px">Lighter day, so the '+plan.dropped.map(function(x){return x==='am'?'mid-morning snack':'afternoon shake';}).join(' and ')+' '+(plan.dropped.length>1?'are':'is')+' left out.</div>':'')+
+    (plan.dropped.length?'<div class="hint" style="margin:0 0 6px">Lighter day, so the '+plan.dropped.map(function(x){return x==='am'?'mid-morning snack':'afternoon yoghurt';}).join(' and ')+' '+(plan.dropped.length>1?'are':'is')+' left out.</div>':'')+
     '<div class="hint" style="margin:0">Estimated burn '+(Math.round(bn.burn/10)*10).toLocaleString('en-GB')+' kcal ('+(bn.parts.length?bn.parts.join(', '):'rest day')+'), so the target is '+bn.target.toLocaleString('en-GB')+' with a small surplus. '+(mode==='future'?'Planned meals: ':'Planned: ')+Math.round(planK).toLocaleString('en-GB')+' kcal, '+Math.round(planP)+'g protein.'+(bn.target-planK>=250?' <b>That\u2019s about '+(Math.round((bn.target-planK)/50)*50)+' kcal short'+(extrasOn(ds).length?' because of the extra activity':'')+'.</b> Top up with '+(bn.target-planK>=450?'a larger dinner (an extra 50g of rice adds 175) and a banana with 30g of nuts':'a banana with 30g of nuts (about 300)')+', then tap \u201cAdd something else I ate\u201d.':'')+'</div></div>';
   if(mode==='today'||(today<F.start&&ds===F.start))h+=foodAlertsHTML(sim,F,st);
   if(mode!=='future'&&tt.eatK<bn.target-300&&mode==='past')h+='';
@@ -1672,7 +1675,7 @@ function renderFoodWeek(){
     slotsFor(plan).forEach(function(s){var m=mk[s[0]];if(m&&m.s==='o'){k+=m.k||0;p+=m.p||0;return;}if(m&&m.s==='x'){sk++;return;}var n=mealNut(plan[s[0]],{burrito:1});k+=n.k;p+=n.p;});
     h+='<button class="fday'+(ds===today?' today':'')+(ds<F.start?' past':'')+'" data-act="fopen" data-d="'+ds+'"><span class="dname">'+DAYS[d]+'</span><span class="fdmain"><b>'+esc(FR[plan.dinner].n)+'</b><span>'+(plan.lunch==='freezer_lunch'?'Freezer lunch':esc(FR[plan.lunch].n))+(sk?' · '+sk+' skipped':'')+'</span></span><span class="num">'+Math.round(k).toLocaleString('en-GB')+' / '+fBurn(ds).target.toLocaleString('en-GB')+'<br>'+Math.round(p)+'g protein</span></button>';
   }
-  h+='</div><p class="hint" style="margin-top:12px">The biggest dinners go on your hardest training days. Every day: porridge, banana and nuts, and a protein shake. Run days add toast and honey before the run, and there\u2019s nothing after dinner. Weekday lunches come from the freezer, and Sunday is prep day when you\u2019re running low. Numbers show planned / target kcal.</p>';
+  h+='</div><p class="hint" style="margin-top:12px">The biggest dinners go on your hardest training days. Every day: porridge, banana and nuts, and Greek yoghurt with berries and granola. Run days add toast and honey before the run, and there\u2019s nothing after dinner. Weekday lunches come from the freezer, and Sunday is prep day when you\u2019re running low. Numbers show planned / target kcal.</p>';
   return h;
 }
 function renderShop(){
