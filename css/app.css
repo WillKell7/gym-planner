@@ -275,6 +275,7 @@ details[open] > .mname::after{content:" \2304"}
 .tday{margin:16px 0 4px}.tdate{font-family:var(--display);font-size:28px;font-weight:700;line-height:1.1}.tday .sub{color:var(--muted);font-size:13px}
 .prompts{display:grid;gap:8px;margin:12px 0 4px}
 .prompt{display:block;text-align:left;width:100%;background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:12px;padding:10px 12px;cursor:pointer;font:inherit;color:inherit}
+.prompt.warn{border-left-color:var(--warn,#d97706)}
 .prompt b{display:block;font-size:14px;margin-bottom:2px}.prompt span{color:var(--muted);font-size:13px}
 .tbtns{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
 .tmeals{margin:8px 0 6px}
