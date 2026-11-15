@@ -174,8 +174,15 @@ var ui={pantryEdit:null,pantryFilter:'all',pantrySearch:'',foodView:'today',food
 function saveUi(){var o={ts:Date.now()};for(var k in ui)o[k]=ui[k];LS.set('tp-ui',o);}
 
 var tempWeeks={};
-/* The day before a week starts (its Sunday), if that week is already planned. */
-function prevDay(key){var pk=iso(addDays(parse(key),-7));if(pk<curWeekKey()&&!state.weeks[pk])return null;var pw=state.weeks[pk]||getWeek(pk);return pw.plan[6];}
+/* The day before a week starts (its Sunday): a gym session you logged that day wins over the one planned. */
+function prevDay(key){
+  var pk=iso(addDays(parse(key),-7)),sun=iso(addDays(parse(key),-1)),pw=null;
+  if(pk>=curWeekKey()||state.weeks[pk])pw=state.weeks[pk]||getWeek(pk);
+  var p=pw?pw.plan[6]:{gym:null,run:null};
+  var lg=state.workouts.filter(function(x){return x.date===sun;}).map(function(x){return x.session;}).pop();
+  return {gym:lg||p.gym,run:p.run};
+}
+function daySig(p){return p?(p.gym||'')+'/'+(p.run||''):'';}
 function blankWeek(key){
   var avail=[];for(var i=0;i<7;i++)avail.push({gym:true,run:true});
   return {avail:avail,plan:schedule(avail,emptyPlan(),0,null,prevDay(key)),done:{}};
@@ -207,7 +214,8 @@ function replan(key){
       if(d<start)fixed[d][k]=s;
     });
   }
-  w.plan=schedule(w.avail,fixed,start,w.pool,prevDay(key));
+  var pd=prevDay(key);
+  w.plan=schedule(w.avail,fixed,start,w.pool,pd);w.prevSig=daySig(pd);
   /* weeks after this one that you haven't touched yet are worked out again, so they fit around its new Sunday */
   Object.keys(tempWeeks).forEach(function(k){if(k>key)delete tempWeeks[k];});
   /* and the next saved week after it, if not started, is re-sorted too (it carries on to the one after) */
@@ -635,8 +643,19 @@ function upgradePlan(){
   Object.keys(state.weeks).forEach(function(k){var w=state.weeks[k];if(k>=c&&!w.pool&&!planList(w).some(function(x){return x.sid==='easy';}))replan(k);});
   state.settings.planV=2;return true;
 }
+/* A saved week that hasn't started yet is re-sorted whenever the Sunday before it changes
+   (a different session planned or logged there), so it never opens with a session that works the same muscles. */
+function refitWeeks(){
+  var c=curWeekKey(),ch=false;
+  Object.keys(state.weeks).sort().forEach(function(k){
+    var w=state.weeks[k];
+    if(k<=c||w.pool||Object.keys(w.done||{}).length)return;
+    if(w.prevSig!==daySig(prevDay(k))){replan(k);ch=true;}
+  });
+  return ch;
+}
 function render(){
-  if(mode!=='pending'&&(upgradePlan()|stravaImport()|autoAdjust()))save();
+  if(mode!=='pending'&&(upgradePlan()|refitWeeks()|stravaImport()|autoAdjust()))save();
   var root=document.getElementById('root');
   var body=ui.tab==='today'?renderToday():ui.tab==='plan'?renderPlan():ui.tab==='log'?renderLog():ui.tab==='food'?renderFood():ui.tab==='settings'?renderSettings():renderProgress();
   root.innerHTML='<header class="top"><div class="top-inner"><div class="brand"><h1>Sub-<span>20</span> Plan</h1><div class="brand-r"><div id="status" class="status"><i></i>Saved</div><button class="gear" data-act="tab" data-tab="settings" aria-label="Settings and backup" aria-pressed="'+(ui.tab==='settings')+'"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="16" cy="7" r="2.2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="10" cy="17" r="2.2" fill="none" stroke="currentColor" stroke-width="2"/></svg></button></div></div>'+
