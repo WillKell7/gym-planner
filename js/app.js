@@ -177,7 +177,7 @@ try{state=JSON.parse(document.getElementById('state').textContent);}catch(e){sta
 state=normalize(state);
 
 var TABS=['today','plan','log','food','progress','settings'];
-var ui={pantryEdit:null,pantryFilter:'all',pantrySearch:'',foodView:'today',foodDay:null,foodWeekOff:0,pantryDraft:null,goalForm:null,tab:'today',fxOpen:null,actType:'walk',actInt:1,ciForm:false,ciAll:false,weekKey:null,logKind:'gym',logSession:null,logDate:null,runType:null,exercise:'Bench press',histAll:false};
+var ui={pantryEdit:null,pantryFilter:'all',pantrySearch:'',foodView:'today',foodDay:null,foodWeekOff:0,pantryDraft:null,goalForm:null,tab:'today',fxOpen:null,actType:'walk',actInt:1,ciForm:false,ciAll:false,weekKey:null,logKind:'gym',logSession:null,logDate:null,runType:null,exercise:'Bench press',histAll:false,calMonth:null,calDay:null};
 (function(){
   var saved=LS.get('tp-ui');
   if(saved&&saved.ts&&Date.now()-saved.ts<2*3600e3){for(var k in ui){if(saved[k]!==undefined)ui[k]=saved[k];}}
@@ -1153,8 +1153,110 @@ function renderGoals(){
   return h;
 }
 
+/* ---------- progress calendar: what was planned on each day, and what you actually did ---------- */
+/* Status of each part of a day: 'done', 'miss' (planned, day gone, not done), 'plan' (planned, still to come), 'extra' (done, not planned), or '' (nothing planned). */
+function calDay(ds){
+  var today=iso(todayD()),past=ds<today,key=iso(monday(parse(ds))),w=getWeek(key),k1=iso(addDays(parse(key),6));
+  var t=trainOn(ds),r={ds:ds,past:past,today:ds===today,before:ds<FIRST_DAY};
+  var wos=state.workouts.filter(function(x){return x.date===ds;});
+  var runs=state.runs.filter(function(x){return x.date===ds;});
+  var acts=(state.activities||[]).filter(function(x){return x.date===ds;});
+  /* gym: a workout logged that day counts. A session ticked off without a log counts on the day it was planned. */
+  var gTick=t.gym&&w.done&&w.done[t.gym]&&!state.workouts.some(function(x){return x.session===t.gym&&x.date>=key&&x.date<=k1;});
+  r.gym=wos.length?(t.gym?'done':'extra'):gTick?'done':t.gym?(past?'miss':'plan'):'';
+  r.gymPlan=t.gym;r.wos=wos;r.gymTick=!wos.length&&gTick;
+  var rTick=t.run&&w.done&&w.done[t.run]&&!runs.length;
+  r.run=runs.length?(t.run?'done':'extra'):rTick?'done':t.run?(past?'miss':'plan'):'';
+  r.runPlan=t.run;r.runs=runs;r.runTick=rTick;r.key=key;r.acts=acts;
+  /* food: only from the day the meal plan started. Past meals not ticked count as eaten, as on the Food tab. */
+  var F=food();r.food='';
+  if(ds>=F.start&&ds<=today){
+    var plan=dayPlan(ds),mk=F.marks[ds]||{},tt=dayTotals(ds,plan,mk,{burrito:1},past?'past':'today'),bn=fBurn(ds),pt=protTarget();
+    var hit=tt.eatK>=bn.target-200&&tt.eatP>=pt-10;
+    r.logged=Object.keys(mk).length>0||((F.extras||{})[ds]||[]).length>0;
+    r.kcal=Math.round(tt.eatK);r.prot=Math.round(tt.eatP);r.tgt=bn.target;r.ptgt=pt;
+    r.food=hit?(r.logged?'done':'assumed'):past?'miss':'plan';
+  }
+  r.weigh=state.weights.filter(function(x){return x.date===ds;}).pop()||null;
+  var parts=[r.gym,r.run,r.food].filter(Boolean);
+  r.all=past&&parts.length>0&&parts.every(function(s){return s==='done'||s==='extra'||s==='assumed';})&&(r.gym||r.run);
+  return r;
+}
+var CAL_SYM={gym:'G',run:'R',food:'F'};
+function calPip(kind,s){
+  if(!s)return '<i class="cp none"></i>';
+  return '<i class="cp '+kind+' '+s+'">'+CAL_SYM[kind]+'</i>';
+}
+function calMonthStart(){
+  var first=parse(FIRST_DAY),min=new Date(first.getFullYear(),first.getMonth(),1);
+  var m=ui.calMonth?parse(ui.calMonth+'-01'):new Date(todayD().getFullYear(),todayD().getMonth(),1);
+  if(m<min)m=min;
+  return m;
+}
+function calSummary(days){
+  var g={d:0,p:0},r={d:0,p:0},f={d:0,p:0},wi=0,perfect=0;
+  days.forEach(function(x){
+    if(x.before)return;
+    if(x.gymPlan&&(x.past||x.gym==='done')){g.p++;}if(x.gym==='done'||x.gym==='extra')g.d++;
+    if(x.runPlan&&(x.past||x.run==='done')){r.p++;}if(x.run==='done'||x.run==='extra')r.d++;
+    if(x.food&&x.food!=='plan'){f.p++;if(x.food!=='miss')f.d++;}
+    if(x.weigh)wi++;if(x.all)perfect++;
+  });
+  return {g:g,r:r,f:f,wi:wi,perfect:perfect};
+}
+function calDetail(x){
+  var dd=parse(x.ds),h='<div class="card caldet"><div class="caldet-h"><b>'+DAYS[dayIdx(dd)]+' '+fmtD(dd)+'</b>'+(x.today?'<span class="pill strong">Today</span>':x.all?'<span class="pill strong calok">Everything done</span>':'')+'</div>';
+  function row(kind,label,s,txt){
+    var st=s==='done'?'Done':s==='extra'?'Extra':s==='assumed'?'On plan':s==='miss'?'Missed':s==='plan'?(x.today?'Today':'Planned'):'';
+    return '<div class="calrow">'+calPip(kind,s||'none')+'<div class="calrow-m"><div class="calrow-t">'+label+(st?' <span class="calst '+s+'">'+st+'</span>':'')+'</div>'+(txt?'<div class="ssub">'+txt+'</div>':'')+'</div></div>';
+  }
+  var any=false;
+  if(x.gymPlan||x.wos.length){any=true;
+    var gl=x.wos.length?x.wos.map(function(w){return (SESS[w.session]?SESS[w.session].name:'Gym')+(w.exercises&&w.exercises.length?' · '+w.exercises.length+' exercise'+(w.exercises.length>1?'s':''):'');}).join(', '):x.gymTick?'Ticked off on the Training page':'';
+    h+=row('gym',x.gymPlan?SESS[x.gymPlan].name:'Gym',x.gym,(x.gymPlan&&x.wos.length&&x.wos[0].session!==x.gymPlan?'Did '+gl:x.wos.length?gl:x.gymTick?gl:''));
+  }
+  if(x.runPlan||x.runs.length){any=true;
+    var rn=x.runPlan==='hard'?hardInfo(hardVariant(x.key),x.key).title:x.runPlan?SESS[x.runPlan].name:'Run';
+    var rl=x.runs.map(function(r){return r.type+', '+fmtKm(+r.km)+(r.sec&&r.km?' at '+fmtPace(r.sec/r.km)+'/km':'');}).join('; ');
+    h+=row('run',rn,x.run,rl||(x.runTick?'Ticked off on the Training page':''));
+  }
+  if(x.food){any=true;
+    var ft=x.kcal.toLocaleString('en-GB')+' / '+x.tgt.toLocaleString('en-GB')+' kcal, '+x.prot+' / '+x.ptgt+'g protein'+(x.food==='assumed'?'. Nothing ticked, so this assumes you ate the plan.':x.today&&x.food==='plan'?' so far.':'');
+    h+=row('food','Food',x.food,ft);
+  }
+  x.acts.forEach(function(a){any=true;h+='<div class="calrow"><i class="cp none"></i><div class="calrow-m"><div class="calrow-t">'+esc(actName(a))+'</div><div class="ssub">'+(a.min||0)+' min</div></div></div>';});
+  if(x.weigh){any=true;h+='<div class="calrow"><i class="cp wi"></i><div class="calrow-m"><div class="calrow-t">Weighed in</div><div class="ssub">'+(Math.round(x.weigh.kg*10)/10)+' kg</div></div></div>';}
+  if(!any)h+='<div class="hint" style="margin:4px 0 0">'+(x.before?'Before the plan started.':'Rest day. Nothing planned.')+'</div>';
+  return h+'</div>';
+}
+function calendarHTML(){
+  var m=calMonthStart(),y=m.getFullYear(),mo=m.getMonth(),first=parse(FIRST_DAY);
+  var atMin=y===first.getFullYear()&&mo===first.getMonth();
+  var gridStart=monday(atMin?first:m),last=new Date(y,mo+1,0),gridEnd=addDays(monday(last),6),today=iso(todayD());
+  var days=[],cells='';
+  for(var d=gridStart;d<=gridEnd;d=addDays(d,1)){
+    var ds=iso(d),inM=d.getMonth()===mo;
+    if(!inM){cells+='<div class="calc out"></div>';continue;}
+    var x=calDay(ds);days.push(x);
+    var cls='calc'+(x.today?' today':'')+(x.before?' before':'')+(x.all?' perfect':'')+(ui.calDay===ds?' sel':'')+(!x.past&&!x.today?' future':'');
+    cells+='<button class="'+cls+'" data-act="cald" data-d="'+ds+'" aria-label="'+DAYS[dayIdx(d)]+' '+fmtD(d)+'"'+(x.before?' disabled':'')+'><span class="cdn">'+d.getDate()+(x.weigh?'<i class="cwi" title="Weighed in"></i>':'')+'</span>'+
+      (x.before?'':'<span class="cps">'+calPip('gym',x.gym)+calPip('run',x.run)+calPip('food',x.food)+'</span>')+'</button>';
+  }
+  var s=calSummary(days),h='<h2>Calendar</h2><div class="card cal">';
+  h+='<div class="weeknav calnav"><button class="iconbtn" data-act="calm" data-n="-1" aria-label="Previous month"'+(atMin?' disabled':'')+'>‹</button><div class="wk"><div class="range">'+['January','February','March','April','May','June','July','August','September','October','November','December'][mo]+' '+y+'</div></div><button class="iconbtn" data-act="calm" data-n="1" aria-label="Next month">›</button></div>';
+  h+='<div class="calgrid calhead">'+DAYS.map(function(n){return '<span>'+n.charAt(0)+'</span>';}).join('')+'</div>';
+  h+='<div class="calgrid">'+cells+'</div>';
+  h+='<div class="legend callegend"><span><i class="cp gym done">G</i>Gym</span><span><i class="cp run done">R</i>Run</span><span><i class="cp food done">F</i>Food on target</span><span><i class="cp gym miss">G</i>Missed</span><span><i class="cp gym plan">G</i>Planned</span><span><i class="cwi"></i>Weigh-in</span></div>';
+  var sel=ui.calDay&&ui.calDay.slice(0,7)===iso(m).slice(0,7)?ui.calDay:null;
+  if(sel)h+=calDetail(calDay(sel));
+  var anyPast=days.some(function(x){return !x.before&&(x.past||x.today);});
+  if(anyPast)h+='<div class="calsum"><div><b>'+s.g.d+'<small>/'+s.g.p+'</small></b><span>Gym sessions</span></div><div><b>'+s.r.d+'<small>/'+s.r.p+'</small></b><span>Runs</span></div><div><b>'+s.f.d+'<small>/'+s.f.p+'</small></b><span>Food days on target</span></div><div><b>'+s.wi+'</b><span>Weigh-ins</span></div></div>';
+  h+='<div class="hint" style="margin:8px 0 0">'+(sel?'':'Tap a day to see what was planned and what you did. ')+'Food counts as on target within 200 kcal of the day’s calories and with your protein. A faded F means nothing was ticked that day, so it assumes you ate the plan.</div>';
+  return h+'</div>';
+}
 function renderProgress(){
   var runs=state.runs,h='';
+  h+=calendarHTML();
   h+=renderGoals();
   var gp=(function(){var rg=activeRunGoal();return rg?rg.sec/rg.km:240;})();
   h+=volumeHTML();
@@ -1736,6 +1838,8 @@ document.addEventListener('click',function(ev){
   var b=ev.target.closest('[data-act]');if(!b)return;
   var act=b.getAttribute('data-act');
   if(act==='tab'){setTab(b.getAttribute('data-tab'));return;}
+  if(act==='calm'){var cm=calMonthStart();cm=new Date(cm.getFullYear(),cm.getMonth()+(+b.getAttribute('data-n')),1);ui.calMonth=iso(cm).slice(0,7);ui.calDay=null;saveUi();render();return;}
+  if(act==='cald'){var cd=b.getAttribute('data-d');ui.calDay=ui.calDay===cd?null:cd;saveUi();render();return;}
   if(act==='go'){var gk=b.getAttribute('data-k'),gv=b.getAttribute('data-v'),gs=b.getAttribute('data-sec');if(gk){ui.logKind=gk;ui.logDate=null;}if(gv){ui.foodView=gv;if(gv==='today')ui.foodDay=null;}if(gs==='checkin')ui.ciForm=true;setTab(b.getAttribute('data-tab'));if(gs){var se=document.getElementById('sec-'+gs);if(se)se.scrollIntoView({block:'start'});}return;}
   if(act==='acttype'||act==='actint'){
     if(act==='acttype')ui.actType=b.getAttribute('data-v');else ui.actInt=+b.getAttribute('data-v');saveUi();

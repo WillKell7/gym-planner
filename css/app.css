@@ -321,3 +321,45 @@ label.check{flex-direction:row;align-items:flex-start;gap:8px;font-size:13px}lab
 .hex li span{color:var(--muted)}.hx-row{display:flex;justify-content:space-between;gap:8px}.hx-row .num{font-size:12.5px;white-space:nowrap;color:var(--ink)}
 .homeopt{margin-top:8px;font-size:13px;border-top:1px dashed var(--line);padding-top:8px}
 .homeopt summary{cursor:pointer;color:var(--muted)}.homeopt summary b{color:var(--ink)}
+
+/* progress calendar */
+.cal{padding:10px 10px 12px}
+.calnav{margin:0 0 8px}
+.calgrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.calhead span{text-align:center;font-size:11.5px;font-weight:600;color:var(--muted);padding-bottom:2px}
+.calc{display:flex;flex-direction:column;align-items:center;justify-content:space-between;gap:4px;min-height:54px;padding:5px 2px 6px;border-radius:8px;border:1px solid var(--line);background:var(--surface-2);color:var(--ink);cursor:pointer;font:inherit}
+.calc.out{visibility:hidden}
+.calc.before{opacity:.35;cursor:default}
+.calc.future{background:var(--surface)}
+.calc.today{border-color:var(--ink);border-width:2px;padding:4px 1px 5px}
+.calc.perfect{background:color-mix(in srgb,var(--good) 16%,var(--surface));border-color:color-mix(in srgb,var(--good) 55%,var(--line))}
+.calc.sel{outline:2px solid var(--accent);outline-offset:1px}
+.cdn{font-size:13px;font-weight:600;line-height:1;display:flex;align-items:center;gap:3px}
+.cps{display:flex;gap:2px}
+.cp{display:inline-flex;align-items:center;justify-content:center;width:12px;height:14px;border-radius:3px;font-size:9px;font-weight:700;font-style:normal;line-height:1;flex:none;border:1px solid transparent}
+.cp.none{visibility:hidden}
+.cp.gym{--c:var(--gym)}.cp.run{--c:var(--run)}.cp.food{--c:var(--accent)}
+.cp.done,.cp.extra{background:var(--c);color:var(--surface)}
+.cp.assumed{background:color-mix(in srgb,var(--c) 30%,transparent);color:var(--ink)}
+.cp.plan{border-color:var(--c);color:var(--c);background:transparent}
+.cp.miss{border:1px dashed var(--muted);color:var(--muted);background:transparent;text-decoration:line-through}
+.cwi,.cp.wi{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--warn);flex:none}
+.cp.wi{width:8px;height:8px;margin:0 2px}
+.callegend{display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:10px;font-size:12px;color:var(--muted)}
+.callegend span{display:inline-flex;align-items:center;gap:5px}
+.calsum{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:12px;text-align:center}
+.calsum div{background:var(--surface-2);border-radius:8px;padding:8px 4px}
+.calsum b{display:block;font-family:var(--display);font-size:22px;line-height:1}
+.calsum small{font-size:14px;color:var(--muted);font-weight:600}
+.calsum span{display:block;font-size:11px;color:var(--muted);margin-top:3px;line-height:1.2}
+.caldet{margin:12px 0 0;background:var(--surface-2);box-shadow:none}
+.caldet-h{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
+.calok{color:var(--good)}
+.calrow{display:flex;align-items:flex-start;gap:10px;padding:6px 0;border-top:1px solid var(--line)}
+.calrow:first-of-type{border-top:0}
+.calrow .cp{margin-top:3px}
+.calrow-m{flex:1;min-width:0}
+.calrow-t{font-weight:600;font-size:14px}
+.calst{font-size:11.5px;font-weight:600;margin-left:4px;color:var(--muted)}
+.calst.done,.calst.extra,.calst.assumed{color:var(--good)}
+.calst.miss{color:var(--warn)}
