@@ -4,7 +4,7 @@
  * away) and fall back to the saved copy when offline.
  * Bump VERSION when you add or rename files below.
  */
-var VERSION = 'v9';
+var VERSION = 'v10';
 var CACHE = 'sub20-' + VERSION;
 var FILES = [
   './', 'index.html', 'manifest.webmanifest',
