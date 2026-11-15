@@ -3,6 +3,7 @@
 
 /*SCHED-START*/
 var START='2026-11-16';
+var FIRST_DAY='2026-11-15'; /* the day you started using the app: nothing earlier is shown */
 var SESS={
   push:{name:'Push',kind:'gym',pri:8,def:0,blurb:'Chest, shoulders, triceps'},
   hard:{name:'Hard run',kind:'run',pri:10,def:1,blurb:''},
@@ -535,7 +536,7 @@ function ciVal(c,k){return c&&c[k]?c[k]:null;}
 function checkinHTML(){
   var cs=(state.checkins||[]).slice().sort(function(a,b){return a.date<b.date?1:-1;}),h='<h2 id="sec-checkin">Weekly check-in</h2><div class="card">';
   if(ui.ciForm){
-    h+='<div class="row2"><label>Date<input type="date" id="ci-date" value="'+iso(todayD())+'"></label><label>Waist (cm)<input id="ci-waist" type="number" inputmode="decimal" step="0.1" min="0"></label></div>'+
+    h+='<div class="row2"><label>Date<input type="date" min="'+FIRST_DAY+'" id="ci-date" value="'+iso(todayD())+'"></label><label>Waist (cm)<input id="ci-waist" type="number" inputmode="decimal" step="0.1" min="0"></label></div>'+
       '<div class="row3"><label>Chest (cm)<input id="ci-chest" type="number" inputmode="decimal" step="0.1" min="0"></label><label>Arm (cm)<input id="ci-arm" type="number" inputmode="decimal" step="0.1" min="0"></label><label>Thigh (cm)<input id="ci-thigh" type="number" inputmode="decimal" step="0.1" min="0"></label></div>'+
       (assetsNS?'<label>Photo (optional, only you can see it)<input type="file" id="ci-photo" accept="image/*"></label>':'')+
       '<label>Notes<textarea id="ci-note" rows="2" placeholder="Energy, sleep, how clothes fit"></textarea></label>'+
@@ -621,6 +622,7 @@ function sessHTML(key,d,k,sid,w,variant,lockDone){
     '<button class="chk" data-act="done" data-sid="'+sid+'" aria-pressed="'+isDone+'" aria-label="Mark '+esc(title)+' done">✓</button></div></div>';
 }
 function renderPlan(){
+  if(ui.weekKey<iso(monday(parse(FIRST_DAY))))ui.weekKey=iso(monday(parse(FIRST_DAY)));
   var key=ui.weekKey,w=getWeek(key),mon=parse(key),cur=curWeekKey();
   var isPast=key<cur,isCur=key===cur,tIdx=isCur?dayIdx(todayD()):-1;
   var idx=weekIdx(key),variant=hardVariant(key);
@@ -632,8 +634,9 @@ function renderPlan(){
   var vLabel=variant==='intervals'?'Intervals week':variant==='tempo'?'Tempo week':'Time trial week';
   var label=w.pool?'Day 1':idx>=0?'Week '+(idx+1):'Before the plan';
   if(w.pool&&pool.indexOf('hard')<0)vLabel='Your first session';
-  var h='<div class="weeknav"><button class="iconbtn" data-act="wk" data-n="-1" aria-label="Previous week">‹</button>'+
-    '<div class="wk"><div class="range">'+fmtD(mon)+' – '+fmtD(addDays(mon,6))+'</div><div class="sub">'+label+' · '+vLabel+(isCur?' · This week':'')+'</div></div>'+
+  var firstWk=key<=iso(monday(parse(FIRST_DAY))),shownFrom=iso(mon)<FIRST_DAY?parse(FIRST_DAY):mon;
+  var h='<div class="weeknav"><button class="iconbtn" data-act="wk" data-n="-1" aria-label="Previous week"'+(firstWk?' disabled':'')+'>‹</button>'+
+    '<div class="wk"><div class="range">'+(+shownFrom===+addDays(mon,6)?fmtD(shownFrom):fmtD(shownFrom)+' – '+fmtD(addDays(mon,6)))+'</div><div class="sub">'+label+' · '+vLabel+(isCur?' · This week':'')+'</div></div>'+
     '<button class="iconbtn" data-act="wk" data-n="1" aria-label="Next week">›</button></div>';
   h+='<div class="summary"><span class="pill strong">'+doneN+' of '+all.length+' done</span>';
   if(key!==defaultWeekKey())h+='<button class="pill" data-act="wk-now">Back to current week</button>';
@@ -652,6 +655,7 @@ function renderPlan(){
     var items=[];
     if(p.run==='hard'){items.push(['run',p.run]);if(p.gym)items.push(['gym',p.gym]);}
     else{if(p.gym)items.push(['gym',p.gym]);if(p.run)items.push(['run',p.run]);}
+    if(iso(date)<FIRST_DAY)continue;
     if(d<from){h+='<section class="day past" aria-label="'+DAYS[d]+' '+fmtD(date)+'"><div class="day-head"><div class="dname">'+DAYS[d]+'</div><div class="ddate">'+fmtD(date)+'</div></div><div class="rest">Before your start.</div></section>';continue;}
     h+='<section class="day'+(d===tIdx?' today':'')+(past?' past':'')+'" aria-label="'+DAYS[d]+' '+fmtD(date)+'">';
     h+='<div class="day-head"><div class="dname">'+DAYS[d]+'</div><div class="ddate">'+(d===tIdx?'<b>Today</b> · ':'')+fmtD(date)+'</div><div class="toggles">'+
@@ -770,7 +774,7 @@ function renderLog(){
   var date=ui.logDate||iso(todayD());
   if(k==='gym'){
     var sid=ui.logSession||defaultGymSession();ui.logSession=sid;
-    h+='<div class="card gymform"><div id="draftnote"></div>'+(isDeload(iso(monday(parse(date))))?'<div class="dlnote">Lighter week: the targets below drop a set and keep the weight the same. Stop 3\u20134 reps short of failure.</div>':'')+'<div class="row2"><label>Date<input type="date" id="lg-date" value="'+date+'"></label>'+
+    h+='<div class="card gymform"><div id="draftnote"></div>'+(isDeload(iso(monday(parse(date))))?'<div class="dlnote">Lighter week: the targets below drop a set and keep the weight the same. Stop 3\u20134 reps short of failure.</div>':'')+'<div class="row2"><label>Date<input type="date" min="'+FIRST_DAY+'" id="lg-date" value="'+date+'"></label>'+
       '<label>Session<select id="lg-session">'+GYM_IDS.map(function(g){return '<option value="'+g+'"'+(g===sid?' selected':'')+'>'+SESS[g].name+'</option>';}).join('')+'</select></label></div>'+
       '<p class="hint" style="margin:0">Grey numbers are today’s targets, worked out from last time. Type just the reps if you used the target weight. Empty sets are skipped.</p>'+
       TPL[sid].map(function(e,i){return exBlock(e,i,date);}).join('')+
@@ -778,7 +782,7 @@ function renderLog(){
       '<div class="err" id="lg-err"></div><button class="btn primary" data-act="savegym">Save workout</button></div>';
   }else if(k==='run'){
     var rt=ui.runType||'Easy';
-    h+='<div class="card"><div class="row2"><label>Date<input type="date" id="rn-date" value="'+date+'"></label>'+
+    h+='<div class="card"><div class="row2"><label>Date<input type="date" min="'+FIRST_DAY+'" id="rn-date" value="'+date+'"></label>'+
       '<label>Type<select id="rn-type">'+RUN_TYPES.map(function(t){return '<option'+(t===rt?' selected':'')+'>'+t+'</option>';}).join('')+'</select></label></div>'+
       '<div class="row3"><label>Distance (km)<input type="number" inputmode="decimal" step="0.01" min="0" id="rn-km" placeholder="5.0"></label>'+
       '<label>Minutes<input type="number" inputmode="numeric" min="0" id="rn-min" placeholder="21"></label>'+
@@ -793,14 +797,14 @@ function renderLog(){
     var at=ACTS[ui.actType]?ui.actType:'walk',ai=ui.actInt==null?1:ui.actInt;
     h+='<div class="card actform"><p class="hint" style="margin:0">Anything outside the plan. It adds to that day\u2019s calorie target. For an unplanned run, use <button class="linkbtn" data-act="lk" data-k="run">Run</button> instead so it counts towards your running.</p>'+
       '<div class="chips">'+Object.keys(ACTS).map(function(a){return '<button class="pill'+(a===at?' on':'')+'" data-act="acttype" data-v="'+a+'" aria-pressed="'+(a===at)+'">'+ACTS[a].n+'</button>';}).join('')+'</div>'+
-      '<div class="row2"><label>Date<input type="date" id="ac-date" value="'+date+'"></label><label>Minutes<input id="ac-min" type="number" inputmode="numeric" min="1" placeholder="45"></label></div>'+
+      '<div class="row2"><label>Date<input type="date" min="'+FIRST_DAY+'" id="ac-date" value="'+date+'"></label><label>Minutes<input id="ac-min" type="number" inputmode="numeric" min="1" placeholder="45"></label></div>'+
       '<div class="seg" style="margin:0" role="group" aria-label="How hard">'+['Easy','Moderate','Hard'].map(function(x,i){return '<button data-act="actint" data-v="'+i+'" aria-pressed="'+(ai===i)+'">'+x+'</button>';}).join('')+'</div>'+
       '<div class="pace-live" id="ac-kcal">\u2014 <small>kcal</small></div>'+
       '<label>Notes<textarea id="ac-note" rows="2" placeholder="Where, who with"></textarea></label>'+
       '<div class="err" id="ac-err"></div><button class="btn primary" data-act="saveact">Save activity</button></div>';
   }else{
     var lastW=state.weights.slice().sort(function(a,b){return a.date<b.date?1:-1;})[0];
-    h+='<div class="card"><div class="row2"><label>Date<input type="date" id="bw-date" value="'+date+'"></label>'+
+    h+='<div class="card"><div class="row2"><label>Date<input type="date" min="'+FIRST_DAY+'" id="bw-date" value="'+date+'"></label>'+
       '<label>Weight (kg)<input type="number" inputmode="decimal" step="0.1" min="0" id="bw-kg" placeholder="'+(lastW?lastW.kg:'')+'"></label></div>'+
       '<p class="hint" style="margin:0">Weigh in the same way each time, ideally first thing in the morning.</p>'+
       '<div class="err" id="bw-err"></div><button class="btn primary" data-act="savebw">Save weight</button></div>';
@@ -1590,7 +1594,7 @@ document.addEventListener('click',function(ev){
     if(!b.classList.contains('armed')){b.classList.add('armed');b.textContent='Tap again to replace';return;}
     state=normalize(RESTORE.st);RESTORE=null;LS.set('tp-gymdraft',null);render();save();toast('Backup restored.');return;
   }
-  if(act==='wk'){ui.weekKey=iso(addDays(parse(ui.weekKey),7*(+b.getAttribute('data-n'))));saveUi();render();return;}
+  if(act==='wk'){ui.weekKey=iso(addDays(parse(ui.weekKey),7*(+b.getAttribute('data-n'))));var fw=iso(monday(parse(FIRST_DAY)));if(ui.weekKey<fw)ui.weekKey=fw;saveUi();render();return;}
   if(act==='wk-now'){ui.weekKey=defaultWeekKey();saveUi();render();return;}
   if(act==='tog'){
     var key=ui.weekKey;if(startIdxFor(key)>=7)return;
