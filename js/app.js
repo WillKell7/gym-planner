@@ -730,7 +730,8 @@ function refitWeeks(){
   return ch;
 }
 function render(){
-  if(mode!=='pending'&&mode!=='ro'&&!outdated&&(stampV()|upgradePlan()|refitWeeks()|stravaImport()|autoAdjust()|syncDinners()))save();
+  /* automatic tidy-ups pause while an out-of-date copy of the app is fighting over the data, so the two don't rewrite each other forever */
+  if(mode!=='pending'&&mode!=='ro'&&!outdated&&!(window.Sync&&Sync.oldCopyAbout&&Sync.oldCopyAbout())&&(stampV()|upgradePlan()|refitWeeks()|stravaImport()|autoAdjust()|syncDinners()))save();
   var root=document.getElementById('root');
   var body=ui.tab==='today'?renderToday():ui.tab==='plan'?renderPlan():ui.tab==='log'?renderLog():ui.tab==='food'?renderFood():ui.tab==='settings'?renderSettings():renderProgress();
   root.innerHTML='<header class="top"><div class="top-inner"><div class="brand"><h1>Sub-<span>20</span> Plan</h1><div class="brand-r"><div id="status" class="status"><i></i>Saved</div><button class="gear" data-act="tab" data-tab="settings" aria-label="Settings and backup" aria-pressed="'+(ui.tab==='settings')+'"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="16" cy="7" r="2.2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="10" cy="17" r="2.2" fill="none" stroke="currentColor" stroke-width="2"/></svg></button></div></div>'+

@@ -38,6 +38,9 @@
     return m + (e.code ? ' [' + e.code + ']' : '');
   }
   function setErr(e) { diag.err = e ? errText(e) : null; if (e) console.warn('Sync problem:', e); notify(); }
+  var oldHits = [];
+  // True while an out-of-date copy of the app, open on another device or tab, keeps saving over this one.
+  function oldCopyAbout() { var t = Date.now() - 120000; return oldHits.filter(function (x) { return x > t; }).length >= 3; }
   function notify() { try { if (window.appRefreshStatus) window.appRefreshStatus(); } catch (x) {} }
 
   /* ---------- small helpers ---------- */
@@ -217,6 +220,8 @@
     // A row has arrived from the server (download, live update, or after a clash). Returns true if it changed anything.
     function incoming(id, rawData) {
       var r = revOf(rawData), d = strip(rawData), b = base[id];
+      // A write with no version number over one that had it can only come from an old copy of the app open somewhere.
+      if (b && b.rev && !r) { oldHits.push(Date.now()); if (oldHits.length > 20) oldHits.shift(); }
       if (b) {
         if (r && r <= b.rev) return false;                 // older than, or the same as, what we already have
         if (!r && same(d, b.data)) return false;           // written by an old copy of the app: only take it if it differs
@@ -560,7 +565,8 @@
   window.Sync = {
     canon: canon,
     updateNow: reloadWhenIdle,
-    problem: function () { return user && diag.err ? 'Not syncing. See Settings' : ''; },
+    oldCopyAbout: oldCopyAbout,
+    problem: function () { return user && diag.err ? 'Not syncing. See Settings' : user && oldCopyAbout() ? 'Old version open on another device. Close and reopen the app there' : ''; },
     accountHtml: function () {
       var h = '<h2>Account and sync</h2><div class="card">';
       if (!sb) h += '<p class="hint" style="margin:0">Sync isn’t set up yet, so data stays on this device. Add your Supabase keys to js/config.js to turn it on.</p>';
@@ -569,6 +575,7 @@
         '<div class="kv"><span>Last download</span><b>' + ago(diag.lastDown) + '</b></div>' +
         '<div class="kv"><span>Changes waiting to upload</span><b>' + diag.pending + '</b></div>' +
         (diag.err ? '<p class="err">Sync problem: ' + esc(diag.err) + '</p>' : '') +
+        (oldCopyAbout() ? '<p class="err">An out-of-date copy of the app is open on another device or browser tab and keeps saving over this one. Close the app there and open it again.</p>' : '') +
         '<div class="row2"><button class="btn sm" data-sync="now">Sync now</button><button class="btn sm" data-sync="out">Sign out</button></div>';
       else h += '<p class="hint" style="margin:0">Not signed in, so data stays on this device. Sign in to sync with your other devices. Anything saved here moves into your account the first time you sign in.</p><button class="btn primary" data-sync="in">Sign in</button>';
       return h + '</div>';
