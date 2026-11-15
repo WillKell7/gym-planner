@@ -1167,9 +1167,11 @@ function calDay(ds){
   var gTick=t.gym&&w.done&&w.done[t.gym]&&!state.workouts.some(function(x){return x.session===t.gym&&x.date>=key&&x.date<=k1;});
   r.gym=wos.length?(t.gym?'done':'extra'):gTick?'done':t.gym?(past?'miss':'plan'):'';
   r.gymPlan=t.gym;r.wos=wos;r.gymTick=!wos.length&&gTick;
-  var rTick=t.run&&w.done&&w.done[t.run]&&!runs.length;
-  r.run=runs.length?(t.run?'done':'extra'):rTick?'done':t.run?(past?'miss':'plan'):'';
-  r.runPlan=t.run;r.runs=runs;r.runTick=rTick;r.key=key;r.acts=acts;
+  /* a planned run done on another day that week shows on the day you ran it, not twice */
+  var rMoved=t.run&&!runs.length?state.runs.filter(function(x){return x.date>=key&&x.date<=k1&&x.date!==ds&&!x.extra&&runSess(x.type)===t.run;})[0]:null;
+  var rTick=t.run&&w.done&&w.done[t.run]&&!runs.length&&!rMoved;
+  r.run=runs.length?(t.run||runs.some(function(x){return !x.extra;})?'done':'extra'):rMoved&&w.done&&w.done[t.run]?'moved':rTick?'done':t.run?(past?'miss':'plan'):'';
+  r.runMoved=rMoved;r.runPlan=t.run;r.runs=runs;r.runTick=rTick;r.key=key;r.acts=acts;
   /* food: only from the day the meal plan started. Past meals not ticked count as eaten, as on the Food tab. */
   var F=food();r.food='';
   if(ds>=F.start&&ds<=today){
@@ -1180,13 +1182,13 @@ function calDay(ds){
     r.food=hit?(r.logged?'done':'assumed'):past?'miss':'plan';
   }
   r.weigh=state.weights.filter(function(x){return x.date===ds;}).pop()||null;
-  var parts=[r.gym,r.run,r.food].filter(Boolean);
-  r.all=past&&parts.length>0&&parts.every(function(s){return s==='done'||s==='extra'||s==='assumed';})&&(r.gym||r.run);
+  var parts=[r.gym,r.run==='moved'?'':r.run,r.food].filter(Boolean);
+  r.all=past&&parts.length>0&&parts.every(function(s){return s==='done'||s==='extra'||s==='assumed';})&&(r.gym||(r.run&&r.run!=='moved'));
   return r;
 }
 var CAL_SYM={gym:'G',run:'R',food:'F'};
 function calPip(kind,s){
-  if(!s)return '<i class="cp none"></i>';
+  if(!s||s==='moved')return '<i class="cp none"></i>';
   return '<i class="cp '+kind+' '+s+'">'+CAL_SYM[kind]+'</i>';
 }
 function calMonthStart(){
@@ -1209,7 +1211,7 @@ function calSummary(days){
 function calDetail(x){
   var dd=parse(x.ds),h='<div class="card caldet"><div class="caldet-h"><b>'+DAYS[dayIdx(dd)]+' '+fmtD(dd)+'</b>'+(x.today?'<span class="pill strong">Today</span>':x.all?'<span class="pill strong calok">Everything done</span>':'')+'</div>';
   function row(kind,label,s,txt){
-    var st=s==='done'?'Done':s==='extra'?'Extra':s==='assumed'?'On plan':s==='miss'?'Missed':s==='plan'?(x.today?'Today':'Planned'):'';
+    var st=s==='moved'?'Moved':s==='done'?'Done':s==='extra'?'Extra':s==='assumed'?'On plan':s==='miss'?'Missed':s==='plan'?(x.today?'Today':'Planned'):'';
     return '<div class="calrow">'+calPip(kind,s||'none')+'<div class="calrow-m"><div class="calrow-t">'+label+(st?' <span class="calst '+s+'">'+st+'</span>':'')+'</div>'+(txt?'<div class="ssub">'+txt+'</div>':'')+'</div></div>';
   }
   var any=false;
@@ -1220,7 +1222,7 @@ function calDetail(x){
   if(x.runPlan||x.runs.length){any=true;
     var rn=x.runPlan==='hard'?hardInfo(hardVariant(x.key),x.key).title:x.runPlan?SESS[x.runPlan].name:'Run';
     var rl=x.runs.map(function(r){return r.type+', '+fmtKm(+r.km)+(r.sec&&r.km?' at '+fmtPace(r.sec/r.km)+'/km':'');}).join('; ');
-    h+=row('run',rn,x.run,rl||(x.runTick?'Ticked off on the Training page':''));
+    h+=row('run',rn,x.run,rl||(x.run==='moved'?'Done on '+DAYS[dayIdx(parse(x.runMoved.date))]+' '+fmtS(x.runMoved.date)+' instead':x.runTick?'Ticked off on the Training page':''));
   }
   if(x.food){any=true;
     var ft=x.kcal.toLocaleString('en-GB')+' / '+x.tgt.toLocaleString('en-GB')+' kcal, '+x.prot+' / '+x.ptgt+'g protein'+(x.food==='assumed'?'. Nothing ticked, so this assumes you ate the plan.':x.today&&x.food==='plan'?' so far.':'');
