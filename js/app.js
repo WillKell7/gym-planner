@@ -94,7 +94,7 @@ function schedule(avail,fixed,start,pool,prev){
 /*SCHED-END*/
 
 var TPL={
-  upA:[['Incline press',3,6,10],['Seated row',3,8,12],['Lat pulldown',3,8,12],['Dips',2,6,12],['Lateral raises',3,10,15],['Overhead tricep extension',3,10,15],['Incline dumbbell curl',3,10,15]],
+  upA:[['Incline press',3,6,10],['Seated row',3,8,12],['Lat pulldown',3,8,12],['Dips',2,6,12],['Lateral raises',3,10,15],['Overhead tricep extension',3,10,15],['Incline dumbbell curl',3,10,15],['Cable crunch',2,10,15]],
   loA:[['Squat machine',3,6,10],['Seated leg curl',3,10,15],['Leg extension',3,10,15],['Calf raises',3,10,15],['Hanging knee raises',2,10,15],['Lateral raises',3,12,20]],
   upB:[['Bench press',3,6,10],['Pull-ups',3,5,10],['Single-arm cable row',3,10,12,' per arm'],['Chest flies',3,10,15],['Lateral raises',3,12,20],['Rear delt cable fly',3,12,20],['Hammer curls',2,10,12],['Tricep pushdown',2,10,15]],
   loB:[['Back extension (45\u00b0)',3,10,15],['Bulgarian split squat',3,8,12,' per leg'],['Seated leg curl',2,10,15],['Calf raises',3,10,15],['Hanging knee raises',2,10,15],['Lateral raises',2,12,20],['Rear delt cable fly',2,12,20]],
@@ -105,7 +105,7 @@ var TPL={
   arms:[['Overhead press',3,6,10],['Lateral raises',3,12,15],['Rear delt cable fly',3,12,15],['Pull-ups',3,6,10],['Hammer curls',3,10,12],['Overhead tricep extension',3,10,12]]
 };
 var TPL_NOTE={
-  upA:'Stop 1\u20132 reps short of failure on the first two lifts and 0\u20131 short on the rest. Overhead extensions and incline curls work the muscle while it\u2019s stretched, which grows it more: lower slowly and use the full range. Pair lateral raises with the triceps and curls to save time.',
+  upA:'Stop 1\u20132 reps short of failure on the first two lifts and 0\u20131 short on the rest. Overhead extensions and incline curls work the muscle while it\u2019s stretched, which grows it more: lower slowly and use the full range. Pair lateral raises with the triceps and curls to save time. Cable crunch: kneel facing the high cable with the rope by your ears, and curl your ribs down towards your hips. Keep your hips still, so your abs do the work, not your arms.',
   loA:'Squat as deep as the machine lets you while your lower back stays flat. Calf raises: pause 2 s at the bottom in the stretch. Finish with 2 \u00d7 45 s of hamstring and hip flexor stretching per side: it\u2019s how you\u2019ll get to touching your toes.',
   upB:'Stop 1\u20132 reps short of failure on bench and pull-ups and 0\u20131 short on the rest. Pair lateral raises with rear delt flies, and curls with pushdowns, 60\u201390 s between.',
   loB:'Back extension: hinge at your hips with your back flat and go down only as far as you can keep it flat. That range grows as your hamstrings loosen; hold a plate once 15 reps is easy. Finish with 2 \u00d7 45 s of hamstring stretching per leg.'
@@ -523,7 +523,7 @@ function renderToday(){
 }
 
 /* ---------- muscle volume ---------- */
-var MUSCLE={'Incline press':{'Chest':1,'Front delts':.5,'Triceps':.5},'Bench press':{'Chest':1,'Triceps':.5,'Front delts':.5},'Dips':{'Triceps':1,'Chest':.5},'Tricep pushdown':{'Triceps':1},'Overhead tricep extension':{'Triceps':1},'Lateral raises':{'Side delts':1},'Chest flies':{'Chest':1},'Lat pulldown':{'Back':1,'Biceps':.5},'Pull-ups':{'Back':1,'Biceps':.5},'Seated row':{'Back':1,'Biceps':.5,'Rear delts':.5},'Single-arm cable row':{'Back':1,'Biceps':.5},'Rear delt cable fly':{'Rear delts':1},'Bicep curls':{'Biceps':1},'Hammer curls':{'Biceps':1},'Squat machine':{'Quads':1,'Glutes':.5},'Bulgarian split squat':{'Quads':1,'Glutes':1},'Hip thrust':{'Glutes':1},'Leg curl':{'Hamstrings':1},'Leg extension':{'Quads':1},'Calf raises':{'Calves':1},'Seated leg curl':{'Hamstrings':1},'Back extension (45\u00b0)':{'Hamstrings':1,'Glutes':.5},'Incline dumbbell curl':{'Biceps':1},'Hanging knee raises':{'Abs':1},'Overhead press':{'Front delts':1,'Side delts':.5,'Triceps':.5}};
+var MUSCLE={'Incline press':{'Chest':1,'Front delts':.5,'Triceps':.5},'Bench press':{'Chest':1,'Triceps':.5,'Front delts':.5},'Dips':{'Triceps':1,'Chest':.5},'Tricep pushdown':{'Triceps':1},'Overhead tricep extension':{'Triceps':1},'Lateral raises':{'Side delts':1},'Chest flies':{'Chest':1},'Lat pulldown':{'Back':1,'Biceps':.5},'Pull-ups':{'Back':1,'Biceps':.5},'Seated row':{'Back':1,'Biceps':.5,'Rear delts':.5},'Single-arm cable row':{'Back':1,'Biceps':.5},'Rear delt cable fly':{'Rear delts':1},'Bicep curls':{'Biceps':1},'Hammer curls':{'Biceps':1},'Squat machine':{'Quads':1,'Glutes':.5},'Bulgarian split squat':{'Quads':1,'Glutes':1},'Hip thrust':{'Glutes':1},'Leg curl':{'Hamstrings':1},'Leg extension':{'Quads':1},'Calf raises':{'Calves':1},'Cable crunch':{'Abs':1},'Reverse crunch':{'Abs':1},'Seated leg curl':{'Hamstrings':1},'Back extension (45\u00b0)':{'Hamstrings':1,'Glutes':.5},'Incline dumbbell curl':{'Biceps':1},'Hanging knee raises':{'Abs':1},'Overhead press':{'Front delts':1,'Side delts':.5,'Triceps':.5}};
 var MORDER=['Side delts','Back','Chest','Biceps','Triceps','Rear delts','Front delts','Quads','Glutes','Hamstrings','Calves','Abs'];
 var PRIORITY={'Side delts':1,'Back':1,'Chest':1,'Biceps':1,'Triceps':1};
 function weekVolume(key){
@@ -565,9 +565,10 @@ var HOME={
         ['Band face pull','2 \u00d7 15\u201320','Anchor at head height. Pull towards your face with your elbows high, finishing with your hands either side of your head.'],
         ['Band curl','2 \u00d7 12\u201315','Stand on the band with your elbows pinned to your sides.'],
         ['Band overhead triceps extension','2 \u00d7 12\u201315','Stand on the band or anchor it low behind you. Hands behind your head, then straighten your arms overhead.']]},
-  core:{n:'Core',min:10,base:4,main:['Abs'],vol:{'Abs':7},
-    why:'Core work barely tires you. These three train your trunk to resist bending backwards, sideways and twisting, which is its job when you run and lift. No kit needed, and no overlap with the knee raises on your lower days.',
-    ex:[['Dead bug','3 \u00d7 6\u201310 per side','On your back, arms up and knees bent at 90\u00b0 over your hips. Press your lower back into the floor and keep it there while you slowly lower the opposite arm and leg, then swap. Too easy? Straighten the leg more or move slower.'],
+  core:{n:'Core',min:14,base:4,main:['Abs'],vol:{'Abs':8},
+    why:'Reverse crunches grow your abs, like any muscle, when taken close to failure. The other three train your trunk to resist bending backwards, sideways and twisting, which is its job when you run and lift. No kit needed.',
+    ex:[['Reverse crunch','3 \u00d7 8\u201315','On your back, knees bent, hands by your sides. Curl your hips off the floor towards your ribs, then lower over 3 s. Stop 1\u20132 reps short of failure. Too easy? Straighten your legs more. If you buy an ab wheel (about \u00a310), do 3 \u00d7 6\u201312 kneeling rollouts instead.'],
+        ['Dead bug','3 \u00d7 6\u201310 per side','On your back, arms up and knees bent at 90\u00b0 over your hips. Press your lower back into the floor and keep it there while you slowly lower the opposite arm and leg, then swap. Too easy? Straighten the leg more or move slower.'],
         ['Side plank','3 \u00d7 20\u201340 s per side','Elbow under your shoulder, straight line from head to feet, hips up. Can\u2019t hold 20 s? Do it from your knees. Once 40 s is easy, lift your top leg.'],
         ['Bird dog','2 \u00d7 6\u20138 per side','On hands and knees, back flat. Reach one arm forward and the opposite leg back, hold 5 s without your hips tipping, then swap. Picture a glass of water on your lower back.']]},
   mobility:{n:'Stretch & mobility',min:12,base:2,main:[],vol:{},
@@ -584,7 +585,8 @@ function homeWeek(key,inner){
   var goalPU=state.goals.some(function(g){return g.kind==='lift'&&/pull-?up|chin/i.test(g.ex)&&!liftStatus(g).achieved;});
   var goalCh=state.goals.some(function(g){return g.kind==='lift'&&/bench|incline|push-?up|press-?up|dip/i.test(g.ex)&&!liftStatus(g).achieved;});
   for(var d=0;d<7;d++){
-    var ds=iso(addDays(mon,d)),t=trainOn(ds),blk=Object.assign({},gymMain(iso(addDays(mon,d-1))),gymMain(ds),gymMain(iso(addDays(mon,d+1))));
+    var ds=iso(addDays(mon,d)),t=trainOn(ds),nb=Object.assign({},gymMain(iso(addDays(mon,d-1))),gymMain(iso(addDays(mon,d+1))));delete nb.Abs;/* abs recover in a day, so only a gym session the same day rules out core */
+    var blk=Object.assign(nb,gymMain(ds));
     if(prev)HOME[prev].main.forEach(function(m){blk[m]=1;});
     var w0=getWeek(key);if(w0.pool&&d<(w0.from||0)){picks.push({hs:'mobility',ds:ds,two:false,dl:dl,run:null,gym:null});prev=null;continue;}
     var tdy=gymMain(ds),two=!!(t.gym&&t.run),best='mobility',bs=-99;
@@ -834,7 +836,7 @@ function lastFor(name,beforeDate){
 /* ---------- target engine (double progression) ---------- */
 var STEP={'Bench press':2,'Incline press':2,'Lateral raises':1,'Chest flies':2.5,'Tricep pushdown':2.5,'Dips':2.5,
   'Lat pulldown':2.5,'Seated row':2.5,'Single-arm cable row':2.5,'Rear delt cable fly':2.5,'Bicep curls':2,'Hammer curls':2,
-  'Squat machine':5,'Bulgarian split squat':2,'Seated leg curl':2.5,'Back extension (45\u00b0)':2.5,'Incline dumbbell curl':1,'Hip thrust':5,'Leg curl':2.5,'Leg extension':2.5,'Calf raises':5,'Hanging knee raises':0,
+  'Squat machine':5,'Bulgarian split squat':2,'Seated leg curl':2.5,'Cable crunch':2.5,'Back extension (45\u00b0)':2.5,'Incline dumbbell curl':1,'Hip thrust':5,'Leg curl':2.5,'Leg extension':2.5,'Calf raises':5,'Hanging knee raises':0,
   'Overhead press':2,'Pull-ups':2.5,'Overhead tricep extension':2};
 var ASSIST={'Dips':1,'Pull-ups':1};
 function tplFor(name){var f=null;GYM_IDS.forEach(function(g){TPL[g].forEach(function(e){if(!f&&e[0]===name)f=e;});});return f;}
