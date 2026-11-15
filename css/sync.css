@@ -1,0 +1,6 @@
+/* Sign-in screen (js/sync.js) */
+#sync-overlay{position:fixed;inset:0;z-index:1000;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto}
+#sync-overlay .sync-box{width:100%;max-width:380px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px;display:grid;gap:12px}
+#sync-overlay h2{margin:0;font-family:var(--display);font-size:26px}
+#sync-overlay .hint{margin:0}
+#sync-overlay .linkbtn{justify-self:center;margin-top:4px}
