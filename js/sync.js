@@ -28,6 +28,18 @@
   var TABLE = 'app_docs', BUCKET = 'photos', LOCAL_ONLY = 'sync-local-only';
   var user = null;
 
+  /* sync health, shown in the status pill and in Settings */
+  var diag = { lastUp: null, lastDown: null, err: null, pending: 0, syncNow: null };
+  function errText(e) {
+    if (!e) return 'Unknown error';
+    var m = e.message || String(e);
+    if (e.code === '42501' || /permission denied/i.test(m)) m += ' (run the latest supabase/schema.sql in Supabase)';
+    if (e.code === '42P01' || /does not exist|schema cache/i.test(m)) m += ' (the app_docs table is missing: run supabase/schema.sql)';
+    return m + (e.code ? ' [' + e.code + ']' : '');
+  }
+  function setErr(e) { diag.err = e ? errText(e) : null; if (e) console.warn('Sync problem:', e); notify(); }
+  function notify() { try { if (window.appRefreshStatus) window.appRefreshStatus(); } catch (x) {} }
+
   /* ---------- small helpers ---------- */
   function lsGet(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
   function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
@@ -135,7 +147,7 @@
     var queue = lsGet(QK) || {};   // chunks changed here and not yet uploaded
     var listeners = [], flushing = false, fetchTimer = null, retryTimer = null;
 
-    function persist() { lsSet(CK, cache); lsSet(QK, queue); }
+    function persist() { lsSet(CK, cache); lsSet(QK, queue); diag.pending = Object.keys(queue).length; }
     function pending() { return Object.keys(queue).length > 0; }
 
     function emit(fromCache) {
@@ -151,8 +163,9 @@
         (r.data || []).forEach(function (row) { next[row.id] = row.data; });
         Object.keys(queue).forEach(function (id) { next[id] = queue[id]; }); // local changes win until uploaded
         cache = next; persist();
+        diag.lastDown = Date.now(); if (!pending()) setErr(null); else notify();
         return true;
-      });
+      }).catch(function (e) { setErr(e); throw e; });
     }
     function refresh() {
       clearTimeout(fetchTimer);
@@ -172,13 +185,15 @@
       return sb.from(TABLE).upsert(rows, { onConflict: 'user_id,id' }).then(function (r) {
         flushing = false;
         if (r.error) throw r.error;
+        diag.lastUp = Date.now(); diag.err = null;
         ids.forEach(function (id, i) { if (queue[id] !== undefined && JSON.stringify(queue[id]) === sent[i]) delete queue[id]; });
         persist();
         if (pending()) return flushQueue();
+        notify();
         emit(false);
       }).catch(function (e) {
         flushing = false;
-        console.warn('Sync upload failed, will retry', e);
+        setErr(e);
         clearTimeout(retryTimer); retryTimer = setTimeout(flushQueue, 15000);
       });
     }
@@ -196,6 +211,10 @@
     window.addEventListener('online', function () { flushQueue(); refresh(); });
     window.addEventListener('focus', refresh);
     document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') refresh(); });
+    // Backup for live updates: check for changes every 30 seconds while the app is open.
+    setInterval(function () { if (document.visibilityState === 'visible') { flushQueue(); refresh(); } }, 30000);
+    diag.syncNow = function () { flushQueue(); refresh(); };
+    persist();
 
     return {
       collection: function () {
@@ -216,6 +235,7 @@
               }).catch(function () {
                 if (settled) return; settled = true; clearTimeout(fallback);
                 if (hasCache) emit(true); else if (errCb) errCb({ code: 'unavailable' });
+                notify();
               });
             }
             return function () { listeners = listeners.filter(function (x) { return x !== l; }); };
@@ -289,11 +309,18 @@
   };
 
   /* ---------- account card shown at the bottom of Settings ---------- */
+  function ago(t) { if (!t) return 'not yet'; var s = Math.round((Date.now() - t) / 1000); return s < 60 ? 'just now' : s < 3600 ? Math.round(s / 60) + ' min ago' : new Date(t).toLocaleString('en-GB'); }
   window.Sync = {
+    problem: function () { return user && diag.err ? 'Not syncing. See Settings' : ''; },
     accountHtml: function () {
       var h = '<h2>Account and sync</h2><div class="card">';
       if (!sb) h += '<p class="hint" style="margin:0">Sync isn’t set up yet, so data stays on this device. Add your Supabase keys to js/config.js to turn it on.</p>';
-      else if (user) h += '<div class="kv"><span>Signed in as</span><b>' + esc(user.email) + '</b></div><p class="hint" style="margin:0">Changes sync to every device signed in with this email. They save here first, so logging works offline too.</p><button class="btn sm" data-sync="out">Sign out</button>';
+      else if (user) h += '<div class="kv"><span>Signed in as</span><b>' + esc(user.email) + '</b></div><p class="hint" style="margin:0">Changes sync to every device signed in with this email. They save here first, so logging works offline too.</p>' +
+        '<div class="kv"><span>Last upload</span><b>' + ago(diag.lastUp) + '</b></div>' +
+        '<div class="kv"><span>Last download</span><b>' + ago(diag.lastDown) + '</b></div>' +
+        '<div class="kv"><span>Changes waiting to upload</span><b>' + diag.pending + '</b></div>' +
+        (diag.err ? '<p class="err">Sync problem: ' + esc(diag.err) + '</p>' : '') +
+        '<div class="row2"><button class="btn sm" data-sync="now">Sync now</button><button class="btn sm" data-sync="out">Sign out</button></div>';
       else h += '<p class="hint" style="margin:0">Not signed in, so data stays on this device. Sign in to sync with your other devices. Anything saved here moves into your account the first time you sign in.</p><button class="btn primary" data-sync="in">Sign in</button>';
       return h + '</div>';
     }
@@ -301,6 +328,7 @@
   document.addEventListener('click', function (ev) {
     var b = ev.target.closest && ev.target.closest('[data-sync]');
     if (!b) return;
+    if (b.getAttribute('data-sync') === 'now') { if (diag.syncNow) diag.syncNow(); else location.reload(); return; }
     if (b.getAttribute('data-sync') === 'in') { lsDel(LOCAL_ONLY); location.reload(); }
     if (b.getAttribute('data-sync') === 'out') {
       b.disabled = true;

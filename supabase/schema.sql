@@ -10,6 +10,10 @@ create table if not exists public.app_docs (
   primary key (user_id, id)
 );
 
+-- Let signed-in users reach the table through the API (newer Supabase projects
+-- don't do this automatically). The rules below still limit them to their own rows.
+grant select, insert, update, delete on public.app_docs to authenticated;
+
 -- 2. Each signed-in person can only see and change their own rows.
 alter table public.app_docs enable row level security;
 drop policy if exists "read own"   on public.app_docs;

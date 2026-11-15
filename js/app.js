@@ -289,8 +289,10 @@ function setStatus(s){
   else if(mode==='ro'){cls='ro';txt='View only';}
   else if(mode==='full'){cls='local';txt='Storage full. Back up and tidy old logs';}
   else if(mode==='error'){cls='local';txt='Couldn’t save. Check your connection';}
+  if((mode==='db'||mode==='local')&&s!=='saving'&&s!=='remote'&&window.Sync&&Sync.problem()){cls='local';txt=Sync.problem();}
   el.className='status '+cls;el.innerHTML='<i></i>'+txt;
 }
+window.appRefreshStatus=function(){setStatus();if(ui.tab==='settings'&&!isEditing())render();};
 var toastTimer=null;
 function toast(msg){
   var el=document.getElementById('toast');if(!el)return;
