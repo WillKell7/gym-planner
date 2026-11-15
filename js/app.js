@@ -446,6 +446,11 @@ function renderToday(){
   var ws=state.weights.slice().sort(function(a,b){return a.date<b.date?-1:1;}),lw=ws[ws.length-1];
   var pr='';
   if(!lw||(td-parse(lw.date))/864e5>=6)pr+='<button class="prompt" data-act="go" data-tab="log" data-k="bw"><b>Weigh in</b><span>'+(lw?'Last one was '+fmtS(lw.date):'No weigh-ins yet')+'. Once or twice a week keeps your calorie targets accurate.</span></button>';
+  var wt=weightTrend(iso(addDays(td,-35)));
+  if(wt&&wt.perMonth<GAIN_MIN){var la=lastAdj(),recent=la&&la.delta>0&&(td-parse(la.d))/864e5<21,pm=Math.round(wt.perMonth*10)/10;
+    pr+='<button class="prompt warn" data-act="go" data-tab="food" data-v="today"><b>'+(pm<=0?'Your weight isn\u2019t going up':'Your weight gain has stalled')+'</b><span>'+(pm>0?'+':'')+pm+'kg a month over the last '+wt.weeks+' weeks, under the '+GAIN_MIN+'\u2013'+GAIN_MAX+'kg aim. '+
+      (recent?'Calories went up '+la.delta+' a day on '+fmtS(la.d)+', so give that about 3 weeks to show.':(F.adj||0)>=900?'The app has already added as much as it will, so it\u2019s worth looking at what you actually eat.':'Calories go up 150 a day at the next 2-weekly check.')+
+      ' Eating every planned meal and snack matters most.</span></button>';}
   var cs=(state.checkins||[]).slice().sort(function(a,b){return a.date<b.date?-1:1;}),lc=cs[cs.length-1];
   if(d===6&&(!lc||(td-parse(lc.date))/864e5>=6))pr+='<button class="prompt" data-act="go" data-tab="progress" data-sec="checkin"><b>Weekly check-in</b><span>Measure your waist, chest and arms, and take a photo if you like. Takes 2 minutes.</span></button>';
   if(pr)h+='<div class="prompts">'+pr+'</div>';
@@ -1383,17 +1388,27 @@ function dayTotals(ds,plan,mk,st,mode){
   ((F.extras||{})[ds]||[]).forEach(function(x){r.eatK+=x.k||0;r.eatP+=x.p||0;r.planK+=x.k||0;r.planP+=x.p||0;});
   return r;
 }
-/* automatic target adjustment from the bodyweight trend, checked every 2 weeks */
+/* Bodyweight trend in kg a month from weigh-ins on or after `from`. Null until there are 3 weigh-ins spread over at least 3 weeks. */
+var GAIN_MIN=0.25,GAIN_MAX=1;
+function weightTrend(from){
+  var rec=state.weights.filter(function(w){return w.date>=from;}).sort(function(a,b){return a.date<b.date?-1:1;});
+  if(rec.length<3)return null;
+  var span=(parse(rec[rec.length-1].date)-parse(rec[0].date))/864e5;if(span<21)return null;
+  var reg=linreg(rec.map(function(w){return {t:parse(w.date).getTime(),y:+w.kg};}));
+  return reg?{perMonth:reg.perDay*30,weeks:Math.round(span/7)}:null;
+}
+function lastAdj(){var l=food().adjLog||[];return l.length?l[l.length-1]:null;}
+/* automatic target adjustment from the bodyweight trend, checked every 2 weeks.
+   Only weigh-ins since the last change count, so a change gets 3 weeks to show before another is stacked on top. */
 function autoAdjust(){
-  var F=food(),ws=state.weights.slice().sort(function(a,b){return a.date<b.date?-1:1;}),today=todayD();
-  if(ws.length<3)return false;
+  var F=food(),today=todayD();
+  if(state.weights.length<3)return false;
   if(F.adjAt&&(today-parse(F.adjAt))/864e5<14)return false;
-  var from=iso(addDays(today,-35)),rec=ws.filter(function(w){return w.date>=from;});
-  if(rec.length<3||(parse(rec[rec.length-1].date)-parse(rec[0].date))/864e5<21)return false;
-  var reg=linreg(rec.map(function(w){return {t:parse(w.date).getTime(),y:+w.kg};}));if(!reg)return false;
-  var perMonth=reg.perDay*30,delta=0,why='';
-  if(perMonth<0.25){delta=150;why='Gaining '+(Math.round(perMonth*10)/10)+'kg a month, under the 0.25\u20131kg aim';}
-  else if(perMonth>1){delta=-150;why='Gaining '+(Math.round(perMonth*10)/10)+'kg a month, faster than needed';}
+  var from=iso(addDays(today,-35)),la=lastAdj();if(la&&la.d>from)from=la.d;
+  var tr=weightTrend(from);if(!tr)return false;
+  var perMonth=tr.perMonth,delta=0,why='';
+  if(perMonth<GAIN_MIN){delta=150;why='Gaining '+(Math.round(perMonth*10)/10)+'kg a month, under the 0.25\u20131kg aim';}
+  else if(perMonth>GAIN_MAX){delta=-150;why='Gaining '+(Math.round(perMonth*10)/10)+'kg a month, faster than needed';}
   F.adjAt=iso(today);
   if(!delta)return true;
   var na=Math.max(-600,Math.min(900,(F.adj||0)+delta));if(na===(F.adj||0))return true;
@@ -1515,11 +1530,11 @@ function nutRow(k,p,tk,tp){
 function weightAdvice(){
   var ws=state.weights.slice().sort(function(a,b){return a.date<b.date?-1:1;});
   if(ws.length<2)return 'Weigh in once or twice a week (Log › Weight).';
-  var a=ws[0],b=ws[ws.length-1],days=(parse(b.date)-parse(a.date))/864e5;
-  if(days<21)return 'Keep weighing in. The trend becomes useful after about 3 weeks.';
-  var perMonth=(b.kg-a.kg)/days*30;
-  if(perMonth<0.25)return 'Gaining about '+(Math.round(perMonth*10)/10)+'kg a month, which is slower than the aim.';
-  if(perMonth>1)return 'Gaining about '+(Math.round(perMonth*10)/10)+'kg a month, faster than needed.';
+  var tr=weightTrend(iso(addDays(todayD(),-35)));
+  if(!tr)return 'Keep weighing in. The trend becomes useful after about 3 weeks.';
+  var perMonth=tr.perMonth;
+  if(perMonth<GAIN_MIN)return 'Gaining about '+(Math.round(perMonth*10)/10)+'kg a month over the last '+tr.weeks+' weeks, which is slower than the aim.';
+  if(perMonth>GAIN_MAX)return 'Gaining about '+(Math.round(perMonth*10)/10)+'kg a month, faster than needed.';
   return 'Gaining about '+(Math.round(perMonth*10)/10)+'kg a month. That’s right on target.';
 }
 function plan0dinner(ds){var sw=(food().swaps||{})[ds];return sw||DINNERS[dayIdx(parse(ds))];}
