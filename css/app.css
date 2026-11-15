@@ -249,12 +249,12 @@ details[open] > .mname::after{content:" \2304"}
 .rsrc{font-size:12px;color:var(--muted);margin:6px 0 0}
 .rsrc a{color:var(--accent)}
 
-.rest{position:fixed;left:50%;bottom:16px;transform:translateX(-50%) translateY(140%);background:var(--ink);color:var(--bg);border-radius:999px;padding:8px 8px 8px 16px;display:flex;align-items:center;gap:8px;z-index:20;transition:transform .2s;box-shadow:0 6px 20px rgba(0,0,0,.25)}
-.rest.show{transform:translateX(-50%) translateY(0)}
-.rest.go{background:var(--good)}
-.rest .rt{font-size:14px}.rest .rt b{font-family:var(--display);font-size:22px;font-variant-numeric:tabular-nums;margin-left:4px}
-.rest button{border:0;border-radius:999px;padding:7px 12px;font-weight:600;font-size:13px;cursor:pointer;background:rgba(255,255,255,.15);color:inherit}
-@media (prefers-reduced-motion: reduce){.rest{transition:none}}
+.resttimer{position:fixed;left:50%;bottom:16px;transform:translateX(-50%) translateY(140%);background:var(--ink);color:var(--bg);border-radius:999px;padding:8px 8px 8px 16px;display:flex;align-items:center;gap:8px;z-index:20;transition:transform .2s;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+.resttimer.show{transform:translateX(-50%) translateY(0)}
+.resttimer.go{background:var(--good)}
+.resttimer .rt{font-size:14px}.resttimer .rt b{font-family:var(--display);font-size:22px;font-variant-numeric:tabular-nums;margin-left:4px}
+.resttimer button{border:0;border-radius:999px;padding:7px 12px;font-weight:600;font-size:13px;cursor:pointer;background:rgba(255,255,255,.15);color:inherit}
+@media (prefers-reduced-motion: reduce){.resttimer{transition:none}}
 .rir{display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--muted)}
 .dlnote{font-size:13px;background:var(--surface-2);border-left:3px solid var(--accent);border-radius:6px;padding:8px 10px;margin:6px 0}
 .dlnote.draft{border-left-color:var(--good)}

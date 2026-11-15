@@ -3,17 +3,26 @@
 
 /*SCHED-START*/
 var START='2026-11-16';
-var FIRST_DAY='2026-11-15'; /* the day you started using the app: nothing earlier is shown */
+var FIRST_DAY='2026-11-16'; /* the day you started using the app: nothing earlier is shown */
 var SESS={
-  push:{name:'Push',kind:'gym',pri:8,def:0,blurb:'Chest, shoulders, triceps'},
+  upA:{name:'Upper A',kind:'gym',pri:8,def:5,blurb:'Chest, back, shoulders, arms'},
+  loA:{name:'Lower A',kind:'gym',pri:9,def:6,blurb:'Quads, hamstrings, calves, core'},
+  upB:{name:'Upper B',kind:'gym',pri:7,def:2,blurb:'Bench, pull-ups, shoulders, arms'},
+  loB:{name:'Lower B',kind:'gym',pri:6,def:3,blurb:'Hamstrings, glutes, calves, core'},
   hard:{name:'Hard run',kind:'run',pri:10,def:1,blurb:''},
-  pull:{name:'Pull',kind:'gym',pri:7,def:2,blurb:'Back, rear delts, biceps'},
   long:{name:'Long easy run',kind:'run',pri:9,def:5,blurb:'45–60 min at chatting pace'},
   easy:{name:'Easy run',kind:'run',pri:6,def:3,blurb:''},
-  legs:{name:'Legs + core',kind:'gym',pri:9,def:5,blurb:'Quads, hamstrings, glutes, calves'},
-  arms:{name:'Shoulders & arms',kind:'gym',pri:5,def:6,blurb:'Overhead press, delts, arms'}
+  /* the old four-way split, kept only so weeks and workouts logged before 16 Nov 2026 still show their names */
+  push:{name:'Push',kind:'gym',pri:0,def:-1,blurb:'Chest, shoulders, triceps',old:true},
+  pull:{name:'Pull',kind:'gym',pri:0,def:-1,blurb:'Back, rear delts, biceps',old:true},
+  legs:{name:'Legs + core',kind:'gym',pri:0,def:-1,blurb:'Quads, hamstrings, glutes, calves',old:true},
+  arms:{name:'Shoulders & arms',kind:'gym',pri:0,def:-1,blurb:'Overhead press, delts, arms',old:true}
 };
-var ORDER=['hard','legs','long','push','pull','easy','arms'];
+/* lower-body sessions: kept off the day before a hard or long run */
+var LOWER={loA:1,loB:1,legs:1};
+/* an old session planned but not done yet becomes this one */
+var OLD_TO_NEW={pull:'upA',push:'upB',legs:'loA',arms:'loB'};
+var ORDER=['hard','loA','long','upA','upB','easy','loB'];
 function emptyPlan(){var p=[];for(var i=0;i<7;i++)p.push({gym:null,run:null});return p;}
 function has(day,s){return day.gym===s||day.run===s;}
 function either(A,B,a,b){return (has(A,a)&&has(B,b))||(has(A,b)&&has(B,a));}
@@ -32,8 +41,8 @@ function overlap(a,b){
 var OVL_W=6; /* high enough that a session is left out rather than put straight after one that works the same muscles */
 function nextDayPen(D,B){
   var sc=0,dr=D.run,br=B.run;
-  if(D.gym==='legs'){if(br==='hard')sc-=40;else if(br==='long')sc-=12;}
-  if(dr==='hard'&&B.gym==='legs')sc-=15;
+  if(LOWER[D.gym]){if(br==='hard')sc-=40;else if(br==='long')sc-=12;}
+  if(dr==='hard'&&LOWER[B.gym])sc-=15;
   if(dr&&br){
     if((dr==='hard'&&br==='long')||(dr==='long'&&br==='hard'))sc-=18;
     else if(dr==='easy'||br==='easy')sc-=8;
@@ -69,7 +78,7 @@ function schedule(avail,fixed,start,pool,prev){
       D.gym=g;D.run=r;
       if(g){x+=val(g,d);st=streak+1;if(st>=3)x-=8;if(!fg){used[g]=1;nl-=SESS[g].pri*20+12;}}
       if(r){x+=val(r,d);if(!fr){used[r]=1;nl-=SESS[r].pri*20+12;}}
-      if(g&&r){x-=25;if(g==='legs')x-=r==='hard'?60:r==='long'?30:10;}
+      if(g&&r){x-=25;if(LOWER[g])x-=r==='hard'?60:r==='long'?30:10;}
       if(P)x+=nextDayPen(P,D);
       if(PP&&PP.gym&&g)x-=overlap(PP.gym,g)*0.3;
       var ol=left;left=nl;
@@ -85,18 +94,23 @@ function schedule(avail,fixed,start,pool,prev){
 /*SCHED-END*/
 
 var TPL={
+  upA:[['Incline press',3,6,10],['Seated row',3,8,12],['Lat pulldown',3,8,12],['Dips',2,6,12],['Lateral raises',3,10,15],['Overhead tricep extension',3,10,15],['Incline dumbbell curl',3,10,15]],
+  loA:[['Squat machine',3,6,10],['Seated leg curl',3,10,15],['Leg extension',3,10,15],['Calf raises',3,10,15],['Hanging knee raises',2,10,15],['Lateral raises',3,12,20]],
+  upB:[['Bench press',3,6,10],['Pull-ups',3,5,10],['Single-arm cable row',3,10,12,' per arm'],['Chest flies',3,10,15],['Lateral raises',3,12,20],['Rear delt cable fly',3,12,20],['Hammer curls',2,10,12],['Tricep pushdown',2,10,15]],
+  loB:[['Back extension (45\u00b0)',3,10,15],['Bulgarian split squat',3,8,12,' per leg'],['Seated leg curl',2,10,15],['Calf raises',3,10,15],['Hanging knee raises',2,10,15],['Lateral raises',2,12,20],['Rear delt cable fly',2,12,20]],
+  /* old split, for weeks before 16 Nov 2026 */
   push:[['Incline press',3,8,12],['Bench press',4,8,12],['Dips',3,8,12],['Tricep pushdown',4,10,12],['Lateral raises',3,12,15],['Chest flies',3,10,12]],
   pull:[['Lat pulldown',4,6,10],['Seated row',3,10,12],['Single-arm cable row',3,10,12,' per arm'],['Lateral raises',3,12,15],['Rear delt cable fly',3,12,15],['Bicep curls',3,8,12]],
   legs:[['Squat machine',4,6,10],['Bulgarian split squat',3,8,10,' per leg'],['Hip thrust',3,8,12],['Leg curl',3,10,12],['Leg extension',3,12,12],['Calf raises',3,12,15],['Hanging knee raises',3,10,15]],
   arms:[['Overhead press',3,6,10],['Lateral raises',3,12,15],['Rear delt cable fly',3,12,15],['Pull-ups',3,6,10],['Hammer curls',3,10,12],['Overhead tricep extension',3,10,12]]
 };
 var TPL_NOTE={
-  push:'Incline goes first so the upper chest gets your freshest sets.',
-  pull:'Single-arm row: pull your elbow back towards your hip to work the lats. Lateral raises here make it 3 shoulder sessions a week.',
-  legs:'Warm up with leg swings and walking lunges. Stretch hamstrings and hip flexors after.',
-  arms:'Finish with 5–10 min stretching: hamstrings, hip flexors, calves, glutes, 30–45 s each.'
+  upA:'Stop 1\u20132 reps short of failure on the first two lifts and 0\u20131 short on the rest. Overhead extensions and incline curls work the muscle while it\u2019s stretched, which grows it more: lower slowly and use the full range. Pair lateral raises with the triceps and curls to save time.',
+  loA:'Squat as deep as the machine lets you while your lower back stays flat. Calf raises: pause 2 s at the bottom in the stretch. Finish with 2 \u00d7 45 s of hamstring and hip flexor stretching per side: it\u2019s how you\u2019ll get to touching your toes.',
+  upB:'Stop 1\u20132 reps short of failure on bench and pull-ups and 0\u20131 short on the rest. Pair lateral raises with rear delt flies, and curls with pushdowns, 60\u201390 s between.',
+  loB:'Back extension: hinge at your hips with your back flat and go down only as far as you can keep it flat. That range grows as your hamstrings loosen; hold a plate once 15 reps is easy. Finish with 2 \u00d7 45 s of hamstring stretching per leg.'
 };
-var GYM_IDS=['push','pull','legs','arms'];
+var GYM_IDS=['upA','loA','upB','loB'];
 var RUN_TYPES=['Intervals','Tempo','Long easy','Easy','Time trial / race'];
 var RUN_CLS={'Intervals':'t-int','Tempo':'t-tempo','Long easy':'t-long','Easy':'t-easy','Time trial / race':'t-tt'};
 var DAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
@@ -177,6 +191,7 @@ var tempWeeks={};
 /* The day before a week starts (its Sunday): a gym session you logged that day wins over the one planned. */
 function prevDay(key){
   var pk=iso(addDays(parse(key),-7)),sun=iso(addDays(parse(key),-1)),pw=null;
+  if(sun<FIRST_DAY)return {gym:null,run:null};
   if(pk>=curWeekKey()||state.weeks[pk])pw=state.weeks[pk]||getWeek(pk);
   var p=pw?pw.plan[6]:{gym:null,run:null};
   var lg=state.workouts.filter(function(x){return x.date===sun;}).map(function(x){return x.session;}).pop();
@@ -369,10 +384,10 @@ function restoreDraft(){
   document.querySelectorAll('input[id^="rir-"]').forEach(function(h){var i=h.id.slice(4);document.querySelectorAll('[data-act="rir"][data-ex="'+i+'"]').forEach(function(b){b.classList.toggle('on',h.value!==''&&b.getAttribute('data-v')===h.value);});});
   if(hasGymDraft()){var n=document.getElementById('draftnote');if(n)n.innerHTML='<div class="dlnote draft">Picked up where you left off. <button class="linkbtn" data-act="discarddraft">Start again</button></div>';}
 }
-var COMPOUND={'Bench press':1,'Incline press':1,'Dips':1,'Lat pulldown':1,'Seated row':1,'Single-arm cable row':1,'Squat machine':1,'Bulgarian split squat':1,'Hip thrust':1,'Overhead press':1,'Pull-ups':1};
+var COMPOUND={'Back extension (45\u00b0)':1,'Bench press':1,'Incline press':1,'Dips':1,'Lat pulldown':1,'Seated row':1,'Single-arm cable row':1,'Squat machine':1,'Bulgarian split squat':1,'Hip thrust':1,'Overhead press':1,'Pull-ups':1};
 var REST={el:null,end:0,iv:null};
 function restEl(){
-  if(!REST.el){REST.el=document.createElement('div');REST.el.className='rest';REST.el.setAttribute('role','timer');
+  if(!REST.el){REST.el=document.createElement('div');REST.el.className='resttimer';REST.el.setAttribute('role','timer');
     REST.el.innerHTML='<span class="rt">Rest <b id="rest-t">0:00</b></span><button data-act="rest" data-v="30">+30s</button><button data-act="rest" data-v="0">Done</button>';
     document.body.appendChild(REST.el);}
   return REST.el;
@@ -423,7 +438,8 @@ function foodAlertsHTML(sim,F,st){
 }
 function renderToday(){
   var F=food(),td=todayD(),ds=iso(td),key=curWeekKey(),w=getWeek(key),d=dayIdx(td),p=w.plan[d],h='';
-  var idx=weekIdx(key),variant=hardVariant(key);
+  var idx=weekIdx(key),variant=hardVariant(key),pre=ds<FIRST_DAY;
+  if(pre)p={gym:null,run:null};
   h+='<div class="tday"><div class="tdate">'+['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][d]+' '+fmtD(td)+'</div><div class="sub">'+(w.pool?'Day 1':idx>=0?'Week '+(idx+1)+' of 12':'Before the plan')+(isDeload(key)?' · lighter week':'')+'</div></div>';
   if(d<5){var wf=isWfh(ds);h+='<div class="chips" style="margin:0 0 12px"><button class="pill'+(wf?' on':'')+'" data-act="wfhtoday" aria-pressed="'+wf+'">'+(wf?'Working from home today ✓':'Working from home today?')+'</button><span class="hint" style="margin:0;align-self:center">'+(wf?'No cycle counted, so today’s calorie target is about 200 lower.':'Cycle to work is counted.')+'</span></div>';}
   /* prompts */
@@ -436,11 +452,12 @@ function renderToday(){
   /* training */
   h+='<h2>Training</h2>';
   var items=[];if(p.run==='hard'){items.push(['run',p.run]);if(p.gym)items.push(['gym',p.gym]);}else{if(p.gym)items.push(['gym',p.gym]);if(p.run)items.push(['run',p.run]);}
-  if(items.length)h+='<div class="days"><section class="day">'+items.map(function(it){return sessHTML(key,d,it[0],it[1],w,variant);}).join('')+'</section></div>';
+  if(pre)h+='<div class="card"><div class="rest">Your plan starts on '+DAYS[dayIdx(parse(FIRST_DAY))]+' '+fmtS(FIRST_DAY)+'. Nothing to do today.</div></div>';
+  else if(items.length)h+='<div class="days"><section class="day">'+items.map(function(it){return sessHTML(key,d,it[0],it[1],w,variant);}).join('')+'</section></div>';
   else h+='<div class="card"><div class="rest">Rest day. Your legs and lungs recover today. 10 minutes of stretching (hamstrings, hip flexors, calves) is a good use of it.</div></div>';
   var ex=extrasOn(ds);
   if(ex.length)h+='<div class="hint" style="margin:8px 0 0">Also today: '+ex.map(function(e){return esc(e.n)+' (~'+e.k+' kcal)';}).join(', ')+'.</div>';
-  if(!w.pool||d>=(w.from||0))h+=homeCardHTML(homeFor(ds));
+  if(!pre&&(!w.pool||d>=(w.from||0)))h+=homeCardHTML(homeFor(ds));
   h+='<div class="tbtns"><button class="btn sm" data-act="go" data-tab="log" data-k="other">+ Log something else</button><button class="btn sm ghost" data-act="go" data-tab="plan">Full week</button></div>';
   /* food */
   h+='<h2>Food</h2>';
@@ -468,7 +485,7 @@ function renderToday(){
 }
 
 /* ---------- muscle volume ---------- */
-var MUSCLE={'Incline press':{'Chest':1,'Front delts':.5,'Triceps':.5},'Bench press':{'Chest':1,'Triceps':.5,'Front delts':.5},'Dips':{'Triceps':1,'Chest':.5},'Tricep pushdown':{'Triceps':1},'Overhead tricep extension':{'Triceps':1},'Lateral raises':{'Side delts':1},'Chest flies':{'Chest':1},'Lat pulldown':{'Back':1,'Biceps':.5},'Pull-ups':{'Back':1,'Biceps':.5},'Seated row':{'Back':1,'Biceps':.5,'Rear delts':.5},'Single-arm cable row':{'Back':1,'Biceps':.5},'Rear delt cable fly':{'Rear delts':1},'Bicep curls':{'Biceps':1},'Hammer curls':{'Biceps':1},'Squat machine':{'Quads':1,'Glutes':.5},'Bulgarian split squat':{'Quads':1,'Glutes':1},'Hip thrust':{'Glutes':1},'Leg curl':{'Hamstrings':1},'Leg extension':{'Quads':1},'Calf raises':{'Calves':1},'Hanging knee raises':{'Abs':1},'Overhead press':{'Front delts':1,'Side delts':.5,'Triceps':.5}};
+var MUSCLE={'Incline press':{'Chest':1,'Front delts':.5,'Triceps':.5},'Bench press':{'Chest':1,'Triceps':.5,'Front delts':.5},'Dips':{'Triceps':1,'Chest':.5},'Tricep pushdown':{'Triceps':1},'Overhead tricep extension':{'Triceps':1},'Lateral raises':{'Side delts':1},'Chest flies':{'Chest':1},'Lat pulldown':{'Back':1,'Biceps':.5},'Pull-ups':{'Back':1,'Biceps':.5},'Seated row':{'Back':1,'Biceps':.5,'Rear delts':.5},'Single-arm cable row':{'Back':1,'Biceps':.5},'Rear delt cable fly':{'Rear delts':1},'Bicep curls':{'Biceps':1},'Hammer curls':{'Biceps':1},'Squat machine':{'Quads':1,'Glutes':.5},'Bulgarian split squat':{'Quads':1,'Glutes':1},'Hip thrust':{'Glutes':1},'Leg curl':{'Hamstrings':1},'Leg extension':{'Quads':1},'Calf raises':{'Calves':1},'Seated leg curl':{'Hamstrings':1},'Back extension (45\u00b0)':{'Hamstrings':1,'Glutes':.5},'Incline dumbbell curl':{'Biceps':1},'Hanging knee raises':{'Abs':1},'Overhead press':{'Front delts':1,'Side delts':.5,'Triceps':.5}};
 var MORDER=['Side delts','Back','Chest','Biceps','Triceps','Rear delts','Front delts','Quads','Glutes','Hamstrings','Calves','Abs'];
 var PRIORITY={'Side delts':1,'Back':1,'Chest':1,'Biceps':1,'Triceps':1};
 function weekVolume(key){
@@ -638,13 +655,31 @@ function restoreSummary(){var r=RESTORE;return '<div class="notice">Backup from 
 
 /* Plan version 2 added a third run (easy, Thursday by default). Weeks already planned are re-planned once, keeping anything ticked off and days already gone. */
 function upgradePlan(){
-  var v=state.settings.planV||1;if(v>=3)return false;
+  var v=state.settings.planV||1;if(v>=5)return false;
   var c=curWeekKey();
   /* v2 added the easy run; v3 made back-to-back overlapping gym days much less likely, so weeks not started yet are re-sorted */
-  Object.keys(state.weeks).sort().forEach(function(k){var w=state.weeks[k];if(w.pool)return;
+  if(v<3)Object.keys(state.weeks).sort().forEach(function(k){var w=state.weeks[k];if(w.pool)return;
     if(v<2&&k>=c&&!planList(w).some(function(x){return x.sid==='easy';}))replan(k);
     else if(k>c&&!Object.keys(w.done||{}).length)replan(k);});
-  state.settings.planV=3;return true;
+  /* v4 swapped Push / Pull / Legs / Shoulders & arms for Upper A, Lower A, Upper B, Lower B. From this week on, old sessions
+     not ticked off yet become their new ones and the week is re-sorted; anything already done stays as it was. */
+  if(v<4)Object.keys(state.weeks).sort().forEach(function(k){
+    if(k<c)return;
+    var w=state.weeks[k],done=w.done||{},m=function(id){return id&&OLD_TO_NEW[id]&&!done[id]?OLD_TO_NEW[id]:id;};
+    w.plan.forEach(function(p){p.gym=m(p.gym);});
+    if(w.pool)w.pool=w.pool.map(m);
+    if(k>c&&!w.pool&&!Object.keys(done).length)replan(k);
+    else if(k===c&&!w.pool)replan(k);
+  });
+  /* v5: the plan starts on Mon 16 Nov 2026 rather than Sun 15 Nov. The day-1 week before it is dropped if nothing in it was
+     ticked off, and the first week is re-sorted without that Sunday's session. */
+  if(v<5){
+    var w0=state.weeks['2026-11-09'];
+    if(w0&&w0.pool&&!Object.keys(w0.done||{}).length)delete state.weeks['2026-11-09'];
+    var w1=state.weeks['2026-11-16'];
+    if(w1&&c<='2026-11-16'&&!Object.keys(w1.done||{}).length)replan('2026-11-16');
+  }
+  state.settings.planV=5;return true;
 }
 /* A saved week that hasn't started yet is re-sorted whenever the Sunday before it changes
    (a different session planned or logged there), so it never opens with a session that works the same muscles. */
@@ -760,7 +795,7 @@ function lastFor(name,beforeDate){
 /* ---------- target engine (double progression) ---------- */
 var STEP={'Bench press':2,'Incline press':2,'Lateral raises':1,'Chest flies':2.5,'Tricep pushdown':2.5,'Dips':2.5,
   'Lat pulldown':2.5,'Seated row':2.5,'Single-arm cable row':2.5,'Rear delt cable fly':2.5,'Bicep curls':2,'Hammer curls':2,
-  'Squat machine':5,'Bulgarian split squat':2,'Hip thrust':5,'Leg curl':2.5,'Leg extension':2.5,'Calf raises':5,'Hanging knee raises':0,
+  'Squat machine':5,'Bulgarian split squat':2,'Seated leg curl':2.5,'Back extension (45\u00b0)':2.5,'Incline dumbbell curl':1,'Hip thrust':5,'Leg curl':2.5,'Leg extension':2.5,'Calf raises':5,'Hanging knee raises':0,
   'Overhead press':2,'Pull-ups':2.5,'Overhead tricep extension':2};
 var ASSIST={'Dips':1,'Pull-ups':1};
 function tplFor(name){var f=null;GYM_IDS.forEach(function(g){TPL[g].forEach(function(e){if(!f&&e[0]===name)f=e;});});return f;}
@@ -821,7 +856,7 @@ function fmtTarget(sets){
 function defaultGymSession(){
   var key=curWeekKey(),w=getWeek(key),t=dayIdx(todayD());
   for(var d=t;d<7;d++){if(w.plan[d].gym&&!w.done[w.plan[d].gym])return w.plan[d].gym;}
-  return 'push';
+  return 'upA';
 }
 function setRow(i,j,ph){
   return '<div class="setrow"><span class="setn">'+(j+1)+'</span>'+
@@ -847,7 +882,7 @@ function renderLog(){
   h+='<div class="seg" role="group" aria-label="What to log">'+[['gym','Gym'],['run','Run'],['other','Other'],['bw','Weight']].map(function(x){return '<button data-act="lk" data-k="'+x[0]+'" aria-pressed="'+(k===x[0])+'">'+x[1]+'</button>';}).join('')+'</div>';
   var date=ui.logDate||iso(todayD());
   if(k==='gym'){
-    var sid=ui.logSession||defaultGymSession();ui.logSession=sid;
+    var sid=ui.logSession||defaultGymSession();if(OLD_TO_NEW[sid])sid=OLD_TO_NEW[sid];if(mode!=='pending')ui.logSession=sid; /* not while loading: the week isn't known yet */
     h+='<div class="card gymform"><div id="draftnote"></div>'+(isDeload(iso(monday(parse(date))))?'<div class="dlnote">Lighter week: the targets below drop a set and keep the weight the same. Stop 3\u20134 reps short of failure.</div>':'')+'<div class="row2"><label>Date<input type="date" min="'+FIRST_DAY+'" id="lg-date" value="'+date+'"></label>'+
       '<label>Session<select id="lg-session">'+GYM_IDS.map(function(g){return '<option value="'+g+'"'+(g===sid?' selected':'')+'>'+SESS[g].name+'</option>';}).join('')+'</select></label></div>'+
       '<p class="hint" style="margin:0">Grey numbers are today’s targets, worked out from last time. Type just the reps if you used the target weight. Empty sets are skipped.</p>'+
@@ -1199,7 +1234,7 @@ function slotsFor(plan){return FSLOTS.filter(function(s){return plan[s[0]];});}
 var DINNERS=['d_honeychicken','d_salmon','d_pasta','d_beefbowl','d_bolognese','d_fajita','d_friedrice'];
 function fTotals(ing){var k=0,p=0;ing.forEach(function(x){var it=FI[x[0]];var f=it.u==='each'?x[1]:x[1]/100;k+=it.k*f;p+=it.p*f;});return {k:k,p:p};}
 ['prep_burrito','prep_bowl'].forEach(function(r){var R=FR[r],t=fTotals(R.ing);FI[R.makes[0]].k=t.k/R.makes[1];FI[R.makes[0]].p=t.p/R.makes[1];});
-function trainOn(ds){var key=iso(monday(parse(ds)));if(key<'2026-11-09')return {gym:null,run:null,key:key};var w=getWeek(key),p=w.plan[dayIdx(parse(ds))];return {gym:p.gym,run:p.run,key:key};}
+function trainOn(ds){var key=iso(monday(parse(ds)));if(ds<FIRST_DAY)return {gym:null,run:null,key:key};var w=getWeek(key),p=w.plan[dayIdx(parse(ds))];return {gym:p.gym,run:p.run,key:key};}
 function dayPlan(ds){
   var d=dayIdx(parse(ds)),t=trainOn(ds),sw=(state.food&&state.food.swaps)||{},p={bfast:'porridge',am:'banana_nuts',lunch:d<5?'freezer_lunch':'eggs_beans',pm:'pm_shake',fuel:t.run?'fuel':null,dinner:(sw[ds]&&FR[sw[ds]])?sw[ds]:DINNERS[d],dropped:[]};
   var tgt=fBurn(ds).target,tot=0,pro=0,tp=protTarget();
@@ -1214,7 +1249,7 @@ function isWfh(ds){var d=dayIdx(parse(ds));if(d>=5)return true;var o=(state.sett
 function fBurn(ds){
   var S=sett(),kg=bodyKg(),bmr=10*kg+6.25*S.height-5*S.age+5,base=bmr*1.3,d=dayIdx(parse(ds)),t=trainOn(ds),parts=[],burn=base;
   if(!isWfh(ds)){burn+=195;parts.push('cycling to work');}
-  if(t.gym){burn+=t.gym==='legs'?280:250;parts.push(SESS[t.gym].name.toLowerCase()+' session');}
+  if(t.gym){burn+=LOWER[t.gym]?280:250;parts.push(SESS[t.gym].name.toLowerCase()+' session');}
   if(t.run){var hv=t.run==='hard'?hardVariant(t.key):'long',hi2=t.run==='hard'?hardInfo(hv,t.key):null;burn+=t.run==='long'?Math.round(LONG_MIN[blockWeek(t.key)]*10.5):t.run==='easy'?Math.round(EASY_MIN[blockWeek(t.key)]*10.5):hv==='trial'?400:hv==='intervals'?180+50*hi2.reps:180+12.5*hi2.min;parts.push(t.run==='long'?'long run':t.run==='easy'?'easy run':hi2.title.toLowerCase());}
   extrasOn(ds).forEach(function(x){burn+=x.k;parts.push(x.n.toLowerCase());});
   var adj=(state.food&&state.food.adj)||0;
