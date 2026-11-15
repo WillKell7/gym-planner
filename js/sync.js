@@ -308,6 +308,120 @@
     }
   };
 
+  /* ---------- Strava: runs copied in by the "strava" Edge Function ---------- *
+   * The function (supabase/functions/strava) keeps your Strava tokens and writes
+   * runs to the strava_runs table. Here we read that table, listen for new rows,
+   * and hand the runs to app.js, which adds any new ones to your log.         */
+  var strava = { runs: [], cbs: [], status: lsGet('strava-status') || null, busy: false, err: null, lastPull: 0 };
+  var stravaId = String(cfg.stravaClientId || '').trim();
+  function stravaSet(s) { strava.status = s; lsSet('strava-status', s); notify(); }
+  function stravaCall(action, extra) {
+    var body = Object.assign({ action: action }, extra || {});
+    return sb.functions.invoke('strava', { body: body }).then(function (r) {
+      if (r.error) {
+        // Pull the function's own error message out of the response when there is one.
+        var ctx = r.error.context;
+        if (ctx && typeof ctx.json === 'function') return ctx.json().then(function (j) { throw new Error(j.error || r.error.message); }, function () { throw r.error; });
+        throw r.error;
+      }
+      return r.data;
+    });
+  }
+  function stravaLoad() {
+    return sb.from('strava_runs').select('id,data').eq('user_id', user.id).then(function (r) {
+      if (r.error) throw r.error;
+      strava.runs = (r.data || []).map(function (row) { var d = Object.assign({}, row.data); d.id = String(row.id); return d; });
+      strava.cbs.forEach(function (cb) { try { cb(strava.runs); } catch (e) { console.error(e); } });
+    });
+  }
+  function stravaSync(quiet) {
+    if (!user || strava.busy) return Promise.resolve();
+    strava.busy = true; if (!quiet) notify();
+    return stravaCall('sync').then(function (d) {
+      strava.busy = false; strava.err = null; strava.lastPull = Date.now();
+      stravaSet(d && d.connected ? { connected: true, athlete: d.athlete, lastSync: d.lastSync, webhook: (strava.status || {}).webhook } : { connected: false });
+      return stravaLoad();
+    }).catch(function (e) {
+      strava.busy = false; strava.err = e.message || String(e); notify();
+      return stravaLoad().catch(function () {});
+    });
+  }
+  function stravaStart(u) {
+    if (!u || !stravaId) return;
+    // Coming back from Strava's "Authorize" page: ?state=strava&code=...
+    var q = new URLSearchParams(location.search);
+    if (q.get('state') === 'strava') {
+      history.replaceState(null, '', location.pathname + location.hash);
+      if (q.get('code')) {
+        strava.busy = true; notify();
+        stravaCall('connect', { code: q.get('code') }).then(function (d) {
+          strava.busy = false; strava.err = null; strava.lastPull = Date.now();
+          stravaSet({ connected: true, athlete: d.athlete, lastSync: d.lastSync, webhook: d.webhook });
+          return stravaLoad();
+        }).catch(function (e) { strava.busy = false; strava.err = e.message || String(e); notify(); });
+      } else {
+        strava.err = 'Strava wasn’t connected (you cancelled, or Strava said no).'; notify();
+      }
+    } else {
+      stravaLoad().catch(function () {});
+      if (strava.status && strava.status.connected) stravaSync(true);
+    }
+    // New runs arrive here live when the webhook writes them.
+    try {
+      sb.channel('strava_runs_' + u.id)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'strava_runs', filter: 'user_id=eq.' + u.id }, function () { stravaLoad().catch(function () {}); })
+        .subscribe();
+    } catch (e) {}
+    // Backup in case a webhook is missed: check Strava when the app comes back to the front, at most every 10 minutes.
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible' && strava.status && strava.status.connected && Date.now() - strava.lastPull > 600e3) stravaSync(true);
+    });
+  }
+  authReady.then(stravaStart);
+
+  window.Strava = {
+    // app.js calls this once: cb gets the full list of Strava runs whenever it changes.
+    onRuns: function (cb) { strava.cbs.push(cb); if (strava.runs.length) cb(strava.runs); },
+    html: function () {
+      if (!sb || !user) return '';
+      var s = strava.status || {}, h = '<h2>Strava</h2><div class="card">';
+      if (!stravaId) {
+        h += '<p class="hint" style="margin:0">Strava isn’t set up yet. Add your Strava Client ID to js/config.js (see the README).</p>';
+      } else if (s.connected) {
+        h += '<div class="kv"><span>Connected as</span><b>' + esc(s.athlete || 'your Strava account') + '</b></div>' +
+          '<p class="hint" style="margin:0">Runs you record on Strava are added to your log automatically, shortly after you finish. Rides and other activities are left out. Check the run type the app picked in Log &gt; History and change it if needed.</p>' +
+          '<div class="kv"><span>Last checked</span><b>' + (strava.busy ? 'checking…' : ago(s.lastSync ? Date.parse(s.lastSync) : null)) + '</b></div>' +
+          '<div class="kv"><span>Runs from Strava</span><b>' + strava.runs.length + '</b></div>' +
+          (s.webhook === 'off' ? '<p class="hint" style="margin:0">Instant updates aren’t on, so new runs appear when you open the app instead.</p>' : '') +
+          '<div class="row2"><button class="btn sm" data-strava="sync"' + (strava.busy ? ' disabled' : '') + '>Check Strava now</button><button class="btn sm" data-strava="off">Disconnect</button></div>';
+      } else {
+        h += '<p class="hint" style="margin:0">Connect Strava and your runs are added to your log automatically. Only runs are copied, not rides.</p>' +
+          '<button class="btn primary" data-strava="on"' + (strava.busy ? ' disabled' : '') + '>' + (strava.busy ? 'Connecting…' : 'Connect Strava') + '</button>';
+      }
+      if (strava.err) h += '<p class="err">Strava problem: ' + esc(strava.err) + '</p>';
+      return h + '</div>';
+    }
+  };
+  document.addEventListener('click', function (ev) {
+    var b = ev.target.closest && ev.target.closest('[data-strava]');
+    if (!b) return;
+    var a = b.getAttribute('data-strava');
+    if (a === 'on') {
+      location.href = 'https://www.strava.com/oauth/authorize?' + new URLSearchParams({
+        client_id: stravaId, response_type: 'code', approval_prompt: 'auto',
+        scope: 'activity:read_all', state: 'strava', redirect_uri: location.origin + location.pathname
+      });
+    }
+    if (a === 'sync') stravaSync(false);
+    if (a === 'off') {
+      if (!b.classList.contains('armed')) { b.classList.add('armed'); b.textContent = 'Tap again to disconnect'; return; }
+      strava.busy = true; notify();
+      stravaCall('disconnect').then(function () {
+        strava.busy = false; strava.err = null; strava.runs = []; stravaSet({ connected: false });
+      }).catch(function (e) { strava.busy = false; strava.err = e.message || String(e); notify(); });
+    }
+  });
+
   /* ---------- account card shown at the bottom of Settings ---------- */
   function ago(t) { if (!t) return 'not yet'; var s = Math.round((Date.now() - t) / 1000); return s < 60 ? 'just now' : s < 3600 ? Math.round(s / 60) + ' min ago' : new Date(t).toLocaleString('en-GB'); }
   window.Sync = {
