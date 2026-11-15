@@ -31,7 +31,7 @@ A gym, running and food planner that installs on your phone like an app (a PWA),
 
 - **Run paces follow your fitness, not the goal.** They come from a current 5K estimate (22:30 to start; change it in Settings). A time trial or race replaces the estimate, and any other run of 3 km or more that shows you're faster moves it down. Intervals are at about 5K pace, tempo about 25 s/km slower, easy and long runs 80–110 s/km slower. There's a time trial in week 4 to check the estimate, and another in week 12.
 - **Three runs a week:** a hard run (intervals, tempo or time trial), an easy run and a long easy run, plus the four gym sessions.
-- **The week sorts itself.** Gym sessions that share muscles (Push, Pull and Shoulders & arms all overlap) aren't put on back-to-back days when there's room, including across the weekend into the next week. Legs are kept away from the day before a hard or long run. Block a day on the Training page and the rest of the week, and the next week, re-sort around it.
+- **The week sorts itself.** Four gym sessions, Upper A, Lower A, Upper B and Lower B, train every muscle twice a week. The two upper (or two lower) sessions aren't put on back-to-back days when there's room, including across the weekend into the next week. Both lower sessions are kept away from the day before a hard or long run. Block a day on the Training page and the rest of the week, and the next week, re-sort around it.
 
 ## One-time setup
 
