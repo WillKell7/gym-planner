@@ -578,6 +578,7 @@ function renderSettings(){
   h+='<h2>Backup</h2><div class="card"><p class="hint" style="margin:0">Your data saves to your account automatically and syncs to your other devices. A backup is a spare copy to keep yourself.</p>'+
     '<div class="row2">'+(downloadsNS?'<button class="btn" data-act="bkdl">Download backup</button>':'')+'<button class="btn" data-act="bkcopy">Copy backup</button></div>'+
     '<label>Restore from a backup file<input type="file" id="bk-file" accept=".json,application/json"></label><div id="bk-msg">'+(RESTORE?restoreSummary():'')+'</div></div>';
+  if(window.Strava)h+=Strava.html();
   if(window.Sync)h+=Sync.accountHtml();
   return h;
 }
@@ -585,7 +586,7 @@ function backupText(){return JSON.stringify({app:'sub20-plan',exported:new Date(
 function restoreSummary(){var r=RESTORE;return '<div class="notice">Backup from <b>'+esc(r.when)+'</b>: '+r.st.workouts.length+' workouts, '+r.st.runs.length+' runs, '+r.st.weights.length+' weigh-ins. This replaces everything in the app now.<div class="row2" style="margin-top:8px"><button class="btn" data-act="bkcancel">Cancel</button><button class="btn primary" data-act="bkrestore">Replace my data</button></div></div>';}
 
 function render(){
-  if(mode!=='pending'&&autoAdjust())save();
+  if(mode!=='pending'&&(stravaImport()|autoAdjust()))save();
   var root=document.getElementById('root');
   var body=ui.tab==='today'?renderToday():ui.tab==='plan'?renderPlan():ui.tab==='log'?renderLog():ui.tab==='food'?renderFood():ui.tab==='settings'?renderSettings():renderProgress();
   root.innerHTML='<header class="top"><div class="top-inner"><div class="brand"><h1>Sub-<span>20</span> Plan</h1><div class="brand-r"><div id="status" class="status"><i></i>Saved</div><button class="gear" data-act="tab" data-tab="settings" aria-label="Settings and backup" aria-pressed="'+(ui.tab==='settings')+'"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="16" cy="7" r="2.2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="10" cy="17" r="2.2" fill="none" stroke="currentColor" stroke-width="2"/></svg></button></div></div>'+
@@ -815,14 +816,14 @@ function renderLog(){
 function renderHistory(){
   var items=[];
   state.workouts.forEach(function(w){items.push({cls:'',type:'workouts',id:w.id,date:w.date,title:SESS[w.session]?SESS[w.session].name:'Workout',sum:w.exercises.map(function(e){return e.name+' '+fmtSets(e.sets);}).join(' · ')+(w.note?' — '+esc(w.note):'')});});
-  state.runs.forEach(function(r){items.push({cls:'run',type:'runs',id:r.id,date:r.date,title:r.type+(r.extra?' (unplanned)':''),sum:r.km+' km · '+fmtTime(r.sec)+' · '+fmtPace(r.sec/r.km)+'/km'+(r.hr?' · '+r.hr+' bpm':'')+(r.note?' — '+esc(r.note):'')});});
+  state.runs.forEach(function(r){items.push({cls:'run',type:'runs',id:r.id,date:r.date,title:r.type+(r.extra?' (unplanned)':''),strava:!!r.strava,rtype:r.type,sum:r.km+' km · '+fmtTime(r.sec)+' · '+fmtPace(r.sec/r.km)+'/km'+(r.hr?' · '+r.hr+' bpm':'')+(r.note?' — '+esc(r.note):'')});});
   (state.activities||[]).forEach(function(a){items.push({cls:'act',type:'activities',id:a.id,date:a.date,title:actName(a),sum:a.min+' min \u00b7 '+['easy','moderate','hard'][a.int==null?1:a.int]+' \u00b7 ~'+actKcal(a)+' kcal'+(a.note?' \u2014 '+esc(a.note):'')});});
   state.weights.forEach(function(b){items.push({cls:'bw',type:'weights',id:b.id,date:b.date,title:'Bodyweight',sum:b.kg+' kg'});});
   items.sort(function(a,b){return a.date<b.date?1:a.date>b.date?-1:(a.id<b.id?1:-1);});
   if(!items.length)return '<div class="empty">Nothing logged yet.</div>';
   var show=ui.histAll?items:items.slice(0,12);
   var h='<div class="hist">'+show.map(function(it){
-    return '<div class="hist-item '+it.cls+'"><span class="bar"></span><div class="hist-main"><div class="hist-title">'+esc(it.title)+'<small>'+fmtS(it.date)+' '+it.date.slice(0,4)+'</small></div><div class="hist-sum">'+it.sum+'</div></div>'+
+    return '<div class="hist-item '+it.cls+'"><span class="bar"></span><div class="hist-main"><div class="hist-title">'+(it.strava?'<select class="rtype" data-id="'+esc(it.id)+'" aria-label="Run type">'+RUN_TYPES.map(function(x){return '<option'+(x===it.rtype?' selected':'')+'>'+x+'</option>';}).join('')+'</select>':esc(it.title))+'<small>'+(it.strava?(it.title.indexOf('(unplanned)')>0?'unplanned · ':'')+'Strava · ':'')+''+fmtS(it.date)+' '+it.date.slice(0,4)+'</small></div><div class="hist-sum">'+it.sum+'</div></div>'+
       '<button class="del" data-act="del" data-type="'+it.type+'" data-id="'+esc(it.id)+'">Delete</button></div>';
   }).join('')+'</div>';
   if(items.length>12)h+='<button class="linkbtn" data-act="histall">'+(ui.histAll?'Show fewer':'Show all '+items.length)+'</button>';
@@ -1530,6 +1531,54 @@ function setTab(t){ui.tab=t;saveUi();if(location.hash.slice(1)!==t){try{history.
 function num(id){var el=document.getElementById(id);if(!el)return null;var v=el.value.trim();return v===''?null:+v;}
 function markDone(date,sid){var key=iso(monday(parse(date)));var w=ensureWeek(key);w.done[sid]=true;}
 
+/* ---------- Strava: new runs from Strava are added to the log (see js/sync.js) ---------- */
+var STRAVA_RUNS=[];
+var HARD_TYPE={intervals:'Intervals',tempo:'Tempo',trial:'Time trial / race'};
+function runSess(type){return type==='Long easy'?'long':(type==='Intervals'||type==='Tempo'||type==='Time trial / race')?'hard':null;}
+/* Guess the run type: from the activity's name first, then what was planned that day, then Strava's own tags. */
+function stravaType(a){
+  var n=a.name||'';
+  if(/parkrun|\brace\b|time ?trial|\bTT\b/i.test(n)||a.workout===1)return 'Time trial / race';
+  if(/interval|\breps\b|\d\s*x\s*\d|track/i.test(n))return 'Intervals';
+  if(/tempo|threshold/i.test(n))return 'Tempo';
+  if(/\blong\b/i.test(n))return 'Long easy';
+  if(/easy|recovery|shake ?out|jog/i.test(n))return 'Easy';
+  var t=trainOn(a.date);
+  if(t.run==='hard')return HARD_TYPE[hardVariant(t.key)]||'Tempo';
+  if(t.run==='long')return 'Long easy';
+  if(a.workout===2)return 'Long easy';
+  return 'Easy';
+}
+/* Adds Strava runs that aren't in the log yet. Returns true if anything was added. */
+function stravaImport(){
+  if(!STRAVA_RUNS.length)return false;
+  var skip=(state.settings.stravaSkip)||[],have={},added=[];
+  state.runs.forEach(function(r){if(r.strava)have[r.strava]=1;});
+  STRAVA_RUNS.slice().sort(function(a,b){return a.date<b.date?-1:1;}).forEach(function(a){
+    var sid=String(a.id);
+    if(have[sid]||skip.indexOf(sid)>=0||!a.date||a.date<FIRST_DAY||!(a.km>0)||!(a.sec>0))return;
+    /* already logged by hand (same day, distance within 10%)? link it instead of adding a copy */
+    var dup=state.runs.filter(function(r){return !r.strava&&r.date===a.date&&Math.abs(r.km-a.km)<=a.km*0.1;})[0];
+    if(dup){dup.strava=sid;have[sid]=1;added.push(null);return;}
+    var type=stravaType(a),sess=runSess(type),key=iso(monday(parse(a.date))),w=getWeek(key);
+    var planned=sess&&w.plan.some(function(p){return p.run===sess;})&&!(w.done&&w.done[sess]);
+    var rob={id:uid(),date:a.date,type:type,km:Math.round(a.km*100)/100,sec:Math.round(a.sec),hr:a.hr||null,note:a.name||'',strava:sid};
+    if(!planned)rob.extra=true;
+    state.runs.push(rob);have[sid]=1;
+    if(planned)markDone(a.date,sess);
+    added.push(rob);
+  });
+  var shown=added.filter(Boolean);
+  if(shown.length===1)toast('From Strava: '+shown[0].type+' run, '+shown[0].km+' km at '+fmtPace(shown[0].sec/shown[0].km)+'/km.');
+  else if(shown.length>1)toast(shown.length+' runs added from Strava.');
+  return added.length>0;
+}
+if(window.Strava)Strava.onRuns(function(list){
+  STRAVA_RUNS=list;
+  if(mode==='pending')return;
+  if(stravaImport()){save();if(!isEditing())render();}
+});
+
 document.addEventListener('click',function(ev){
   var b=ev.target.closest('[data-act]');if(!b)return;
   var act=b.getAttribute('data-act');
@@ -1676,6 +1725,8 @@ document.addEventListener('click',function(ev){
     if(!b.classList.contains('armed')){b.classList.add('armed');b.textContent='Tap again';setTimeout(function(){if(b.isConnected){b.classList.remove('armed');b.textContent='Delete';}},3000);return;}
     var t=b.getAttribute('data-type'),id=b.getAttribute('data-id');
     if(t==='checkins'&&assetsNS){state.checkins.forEach(function(c){if(c.id===id&&c.photo){try{assetsNS.delete(c.photo).catch(function(){});}catch(e){}}});}
+    /* a deleted Strava run stays deleted: remember it so it isn't added again */
+    if(t==='runs'){state.runs.forEach(function(r){if(r.id===id&&r.strava){var sk=state.settings.stravaSkip||(state.settings.stravaSkip=[]);if(sk.indexOf(r.strava)<0)sk.push(r.strava);}});}
     state[t]=state[t].filter(function(x){return x.id!==id;});render();save();toast('Deleted.');return;
   }
   if(act==='histall'){ui.histAll=!ui.histAll;render();return;}
@@ -1724,6 +1775,12 @@ document.addEventListener('change',function(ev){
   else if(id==='lg-date'||id==='rn-date'||id==='bw-date'){ui.logDate=ev.target.value||null;saveUi();}
   else if(id==='rn-type'){ui.runType=ev.target.value;saveUi();}
   else if(id==='pg-ex'){ui.exercise=ev.target.value;saveUi();render();}
+  else if(ev.target.classList&&ev.target.classList.contains('rtype')){
+    /* change the type of a run that came from Strava */
+    var rid=ev.target.getAttribute('data-id'),nt=ev.target.value;
+    state.runs.forEach(function(r){if(r.id===rid){r.type=nt;var ss=runSess(nt);if(!r.extra&&ss)markDone(r.date,ss);}});
+    render();save();toast('Changed to '+nt+'.');
+  }
 });
 document.addEventListener('input',function(ev){
   if(/^gf-(km|h|m|s)$/.test(ev.target.id)){

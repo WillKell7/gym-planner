@@ -128,6 +128,7 @@ textarea{resize:vertical}
 .hist-main{flex:1;min-width:0}
 .hist-title{font-weight:600}
 .hist-title small{font-weight:400;color:var(--muted);margin-left:6px}
+.hist-title select.rtype{font:inherit;font-weight:600;width:auto;padding:2px 4px;margin:0;border:1px solid var(--line);border-radius:6px;background:transparent;color:inherit}
 .hist-sum{font-size:12.5px;color:var(--muted);overflow-wrap:anywhere}
 .del{border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer;flex:none}
 .del.armed{color:var(--run);border-color:var(--run);font-weight:600}

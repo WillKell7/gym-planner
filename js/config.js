@@ -6,5 +6,8 @@
  */
 window.APP_CONFIG = {
   supabaseUrl: 'https://mrwjrvctktpnurqenrjs.supabase.co',
-  supabaseKey: 'sb_publishable_lenBcsN5gB_YVHk23l70Ow_2djq3gU_'
+  supabaseKey: 'sb_publishable_lenBcsN5gB_YVHk23l70Ow_2djq3gU_',
+  // From strava.com/settings/api. The Client ID is safe to publish; the Client
+  // Secret is NOT: it goes in Supabase > Edge Functions > Secrets, never here.
+  stravaClientId: ''
 };

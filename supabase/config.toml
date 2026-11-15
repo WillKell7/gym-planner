@@ -1,0 +1,5 @@
+# Only used if you deploy with the Supabase CLI (supabase functions deploy strava).
+# Strava's webhook calls the function without a Supabase login, so JWT checks are off;
+# the function checks your login itself for anything the app asks it to do.
+[functions.strava]
+verify_jwt = false
