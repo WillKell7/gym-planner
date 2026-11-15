@@ -205,6 +205,10 @@ details[open] > .mname::after{content:" \2304"}
 .falert span{color:var(--muted)}
 .falert.prep{border-left-color:var(--gym)}
 .falert.warn{border-left-color:var(--warn)}
+.falert.shop{border-left-color:var(--good);text-align:left;font:inherit;font-size:13.5px;color:var(--ink);cursor:pointer;width:100%}
+.oadd{display:flex;gap:8px;padding:4px 0 10px}
+.oadd .btn{flex:none}
+.oneoffs .srow:first-of-type{border-top:1px solid var(--line)}
 .fday{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer;color:var(--ink);font-size:14px}
 .fday.today{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
 .fday.past{opacity:.55}
