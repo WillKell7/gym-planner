@@ -4,7 +4,7 @@
  * away) and fall back to the saved copy when offline.
  * Bump VERSION when you add or rename files below.
  */
-var VERSION = 'v14';
+var VERSION = 'v15';
 var CACHE = 'sub20-' + VERSION;
 var FILES = [
   './', 'index.html', 'manifest.webmanifest',
@@ -41,7 +41,9 @@ self.addEventListener('fetch', function (e) {
   if (url.origin !== self.location.origin) return;
 
   e.respondWith(
-    Promise.race([fetch(req), timeout(4000)]).then(function (res) {
+    // 'no-cache' makes the browser check with the server each time, so a new deploy shows up straight away
+    // instead of up to 10 minutes later.
+    Promise.race([fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' }), timeout(4000)]).then(function (res) {
       if (res && res.ok) { var copy = res.clone(); caches.open(CACHE).then(function (c) { c.put(req, copy); }); }
       return res;
     }).catch(function () {

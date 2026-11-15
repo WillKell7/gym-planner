@@ -538,6 +538,7 @@
   function checkForUpdate() {
     if (location.protocol === 'file:' || !navigator.onLine || Date.now() - lastCheck < 20000) return;
     lastCheck = Date.now();
+    try { if (navigator.serviceWorker) navigator.serviceWorker.getRegistration().then(function (r) { if (r) r.update(); }).catch(function () {}); } catch (e) {}
     Promise.all(['js/app.js', 'js/sync.js', 'index.html'].map(function (f) {
       return fetch(f, { method: 'HEAD', cache: 'no-store' }).then(function (r) { return r.ok ? (r.headers.get('etag') || r.headers.get('last-modified') || '') : null; });
     })).then(function (tags) {
