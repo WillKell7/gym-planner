@@ -29,7 +29,7 @@ function overlap(a,b){
   return OVL[a]&&OVL[a][b]||0;
 }
 /* Penalty for day B coming straight after day D (each is {gym,run}). */
-var OVL_W=2.5;
+var OVL_W=6; /* high enough that a session is left out rather than put straight after one that works the same muscles */
 function nextDayPen(D,B){
   var sc=0,dr=D.run,br=B.run;
   if(D.gym==='legs'){if(br==='hard')sc-=40;else if(br==='long')sc-=12;}
