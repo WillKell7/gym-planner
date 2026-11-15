@@ -23,7 +23,9 @@ A gym, running and food planner that installs on your phone like an app (a PWA),
 
 - Every change saves on the device first, then uploads to Supabase. With no signal, changes wait in a queue and upload when you're back online.
 - Other devices pick up changes live while open, and whenever the app is reopened or brought to the front.
-- Data is stored in a few chunks (core plan, workouts, runs, weights, food log, check-ins, activities). If two devices change the **same** chunk while one is offline, the last one to upload wins. Day to day this won't matter, but avoid logging on two devices at once with one of them offline.
+- Data is stored in a few chunks (core plan, workouts, runs, weights, food log, check-ins, activities), and each chunk on the server has a version number. A device can only upload a chunk if it has seen the latest version. If another device changed it first, the two sets of changes are merged (both are kept; if both changed the very same value, the later upload wins) and the upload is retried. Anything older than what a device already has is ignored, so a slow reply can't undo a newer change.
+- An open copy of the app checks every minute whether a new version has been deployed and reloads itself when you're not in the middle of typing.
+- `DATA_V` near the top of the saving code in `js/app.js` is the data version. **Bump it whenever a change alters how saved data is shaped or automatically rewritten** (anything run from `render()`). A copy of the app older than the data it receives stops saving and reloads, so it can't undo the newer copy's work.
 - The first time you sign in on a device, anything already saved on that device is uploaded if your account is still empty.
 - Backups: Settings > Download backup gives you a JSON file. Settings > Restore from a backup file puts one back.
 

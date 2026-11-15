@@ -248,6 +248,19 @@ function planList(w){
 var db=null,mode='pending',dbReady=false,saveTimer=null,dirty=false,lastSaved={},flushing=false,pendingRemote=null,loadTimer=null;
 var CHUNKS=['core','workouts','runs','weights','foodlog','checkins','activities'];
 function clean(o){return JSON.parse(JSON.stringify(o));}
+/* Text form of a chunk with keys in a fixed order, so a copy from the server compares equal to the same data held here. */
+function canon(v){if(v===null||typeof v!=='object')return JSON.stringify(v)+'';if(Array.isArray(v))return '['+v.map(canon).join(',')+']';return '{'+Object.keys(v).sort().filter(function(k){return v[k]!==undefined;}).map(function(k){return JSON.stringify(k)+':'+canon(v[k]);}).join(',')+'}';}
+/* DATA_V: bump this whenever a release changes how saved data is shaped or automatically rewritten (anything run from render()).
+   A copy of the app that is older than the data it receives stops saving and reloads itself, so it can't undo the newer copy's work. */
+var DATA_V=1,outdated=false,pendingLS=null;
+function dataVOf(c){return +((c&&c.core&&c.core.settings&&c.core.settings.dataV)||0);}
+function goOutdated(v){
+  outdated=true;mode='ro';
+  var k='tp-reloaded-for';
+  try{if(sessionStorage.getItem(k)!==String(v)){sessionStorage.setItem(k,String(v));if(window.Sync&&Sync.updateNow)Sync.updateNow();else location.reload();}}catch(e){}
+}
+function stampV(){if((+state.settings.dataV||0)<DATA_V){state.settings.dataV=DATA_V;return true;}return false;}
+window.appCanReload=function(){return !dirty&&!flushing&&!isEditing();};
 function toChunks(s){
   var f=s.food||{},fc={};
   Object.keys(f).forEach(function(k){if(['ev','marks','preps','extras'].indexOf(k)<0)fc[k]=f[k];});
@@ -291,16 +304,20 @@ async function initPersistence(){
       if(snap.empty){/* first sign-in: move anything saved on this device into the account */var ls0=LS.get('tp-state');if(ls0&&ls0.v){state=normalize(ls0);tempWeeks={};}dirty=true;flush();}
       else{
         state=normalize(fromChunks(c));tempWeeks={};
-        var ch=toChunks(state);CHUNKS.forEach(function(k){lastSaved[k]=JSON.stringify(ch[k]);});
+        CHUNKS.forEach(function(k){if(c[k])lastSaved[k]=canon(c[k]);});
+        if(dataVOf(c)>DATA_V)goOutdated(dataVOf(c));
       }
       render();return;
     }
+    if(dataVOf(c)>DATA_V){goOutdated(dataVOf(c));setStatus();return;}
     if(snap.metadata.hasPendingWrites||dirty||flushing)return;
-    var changed=false;
-    Object.keys(c).forEach(function(k){var js=JSON.stringify(clean(c[k]));if(lastSaved[k]!==js){changed=true;lastSaved[k]=js;}});
-    if(!changed)return;
+    var changed=false,nl={};
+    Object.keys(c).forEach(function(k){var js=canon(c[k]);nl[k]=js;if(lastSaved[k]!==js)changed=true;});
+    if(!changed){if(pendingRemote){pendingRemote=null;pendingLS=null;setStatus();}return;}
     var ns=normalize(fromChunks(c));
-    if(isEditing()){pendingRemote=ns;setStatus('remote');return;}
+    /* lastSaved only moves on once the new data is actually on screen, so a save made in the meantime is merged with it rather than replacing it */
+    if(isEditing()){pendingRemote=ns;pendingLS=nl;setStatus('remote');return;}
+    Object.keys(nl).forEach(function(k){lastSaved[k]=nl[k];});pendingRemote=null;pendingLS=null;
     state=ns;tempWeeks={};render();
   },function(err){
     clearTimeout(loadTimer);
@@ -309,7 +326,7 @@ async function initPersistence(){
   });
 }
 function goOffline(){clearTimeout(loadTimer);mode='local';dbReady=false;var ls=LS.get('tp-state');if(ls&&ls.v)state=normalize(ls);tempWeeks={};render();}
-function applyRemote(){if(pendingRemote){state=pendingRemote;pendingRemote=null;tempWeeks={};render();}}
+function applyRemote(){if(pendingRemote){Object.keys(pendingLS||{}).forEach(function(k){lastSaved[k]=pendingLS[k];});state=pendingRemote;pendingRemote=null;pendingLS=null;tempWeeks={};render();}}
 function save(){
   dirty=true;saveUi();LS.set('tp-state',state);
   setStatus('saving');
@@ -319,14 +336,14 @@ async function flush(){
   clearTimeout(saveTimer);
   if(!dirty||flushing)return;
   if(mode!=='db'||!db){dirty=false;LS.set('tp-state',state);setStatus();return;}
-  flushing=true;dirty=false;
+  flushing=true;dirty=false;pendingRemote=null;pendingLS=null;
   var ch=toChunks(state);
   for(var i=0;i<CHUNKS.length;i++){
-    var k=CHUNKS[i],js=JSON.stringify(ch[k]);
+    var k=CHUNKS[i],js=canon(ch[k]);
     if(lastSaved[k]===js)continue;
     var ok=false;
     for(var attempt=0;attempt<2&&!ok;attempt++){
-      try{await db.doc('app/'+k).set(ch[k]);lastSaved[k]=js;ok=true;}
+      try{await db.doc('app/'+k).set(ch[k],lastSaved[k]?JSON.parse(lastSaved[k]):undefined);lastSaved[k]=js;ok=true;}
       catch(e){
         var code=e&&e.code;
         if(code==='unavailable'&&attempt===0){await new Promise(function(r){setTimeout(r,700+Math.random()*600);});continue;}
@@ -350,7 +367,7 @@ function setStatus(s){
   else if(s==='slow'||(mode==='pending'&&!dbReady&&loadTimer===null)){cls='local';txt='Can’t reach your data yet';}
   else if(mode==='pending'){cls='saving';txt='Loading…';}
   else if(mode==='local'){cls='local';txt='Saved on this device only';}
-  else if(mode==='ro'){cls='ro';txt='View only';}
+  else if(mode==='ro'){cls='ro';txt=outdated?'Update needed: close and reopen the app':'View only';}
   else if(mode==='full'){cls='local';txt='Storage full. Back up and tidy old logs';}
   else if(mode==='error'){cls='local';txt='Couldn’t save. Check your connection';}
   if((mode==='db'||mode==='local')&&s!=='saving'&&s!=='remote'&&window.Sync&&Sync.problem()){cls='local';txt=Sync.problem();}
@@ -713,7 +730,7 @@ function refitWeeks(){
   return ch;
 }
 function render(){
-  if(mode!=='pending'&&(upgradePlan()|refitWeeks()|stravaImport()|autoAdjust()|syncDinners()))save();
+  if(mode!=='pending'&&mode!=='ro'&&!outdated&&(stampV()|upgradePlan()|refitWeeks()|stravaImport()|autoAdjust()|syncDinners()))save();
   var root=document.getElementById('root');
   var body=ui.tab==='today'?renderToday():ui.tab==='plan'?renderPlan():ui.tab==='log'?renderLog():ui.tab==='food'?renderFood():ui.tab==='settings'?renderSettings():renderProgress();
   root.innerHTML='<header class="top"><div class="top-inner"><div class="brand"><h1>Sub-<span>20</span> Plan</h1><div class="brand-r"><div id="status" class="status"><i></i>Saved</div><button class="gear" data-act="tab" data-tab="settings" aria-label="Settings and backup" aria-pressed="'+(ui.tab==='settings')+'"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="16" cy="7" r="2.2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="10" cy="17" r="2.2" fill="none" stroke="currentColor" stroke-width="2"/></svg></button></div></div>'+
