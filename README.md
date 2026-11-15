@@ -33,6 +33,13 @@ A gym, running and food planner that installs on your phone like an app (a PWA),
 - **Three runs a week:** a hard run (intervals, tempo or time trial), an easy run and a long easy run, plus the four gym sessions.
 - **The week sorts itself.** Four gym sessions, Upper A, Lower A, Upper B and Lower B, train every muscle twice a week. The two upper (or two lower) sessions aren't put on back-to-back days when there's room, including across the weekend into the next week. Both lower sessions are kept away from the day before a hard or long run. Block a day on the Training page and the rest of the week, and the next week, re-sort around it.
 
+## The calendar
+
+The top of the Progress page is a month calendar. Each day shows three small letters: **G** for gym, **R** for run and **F** for food. A solid letter means done (or food on target), a dashed, crossed-out one means it was planned and missed, and an outlined one means it's still to come. Days where everything planned got done are shaded green, and a small dot marks a weigh-in. Tap a day to see what was planned and what you actually did. Underneath are the month's totals.
+
+- Gym and runs come from the Log (and Strava). A session ticked off on the Training page without a log counts on the day it was planned.
+- Food is on target when the day's calories are within 200 kcal of the target and protein is at least 10 g under target or better. Past meals you didn't tick count as eaten, like on the Food tab, so those days show a faded F.
+
 ## One-time setup
 
 ### 1. Supabase (database and login)
