@@ -5,6 +5,6 @@
  * "anon" / "publishable" key).
  */
 window.APP_CONFIG = {
-  supabaseUrl: 'YOUR_SUPABASE_URL',
-  supabaseKey: 'YOUR_SUPABASE_ANON_KEY'
+  supabaseUrl: 'https://mrwjrvctktpnurqenrjs.supabase.co',
+  supabaseKey: 'sb_publishable_lenBcsN5gB_YVHk23l70Ow_2djq3gU_'
 };
