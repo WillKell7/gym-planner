@@ -638,10 +638,13 @@ function restoreSummary(){var r=RESTORE;return '<div class="notice">Backup from 
 
 /* Plan version 2 added a third run (easy, Thursday by default). Weeks already planned are re-planned once, keeping anything ticked off and days already gone. */
 function upgradePlan(){
-  if((state.settings.planV||1)>=2)return false;
+  var v=state.settings.planV||1;if(v>=3)return false;
   var c=curWeekKey();
-  Object.keys(state.weeks).forEach(function(k){var w=state.weeks[k];if(k>=c&&!w.pool&&!planList(w).some(function(x){return x.sid==='easy';}))replan(k);});
-  state.settings.planV=2;return true;
+  /* v2 added the easy run; v3 made back-to-back overlapping gym days much less likely, so weeks not started yet are re-sorted */
+  Object.keys(state.weeks).sort().forEach(function(k){var w=state.weeks[k];if(w.pool)return;
+    if(v<2&&k>=c&&!planList(w).some(function(x){return x.sid==='easy';}))replan(k);
+    else if(k>c&&!Object.keys(w.done||{}).length)replan(k);});
+  state.settings.planV=3;return true;
 }
 /* A saved week that hasn't started yet is re-sorted whenever the Sunday before it changes
    (a different session planned or logged there), so it never opens with a session that works the same muscles. */
