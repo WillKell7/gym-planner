@@ -281,6 +281,7 @@ details[open] > .mname::after{content:" \2304"}
 .prompt{display:block;text-align:left;width:100%;background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:12px;padding:10px 12px;cursor:pointer;font:inherit;color:inherit}
 .prompt.warn{border-left-color:var(--warn,#d97706)}
 .prompt b{display:block;font-size:14px;margin-bottom:2px}.prompt span{color:var(--muted);font-size:13px}
+.prompt.ask{cursor:default;border-left-color:var(--run)}.prompt.ask .chips{margin-top:8px}.prompt.ask .pill{cursor:pointer;font-size:13px;padding:6px 11px}
 .tbtns{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
 .tmeals{margin:8px 0 6px}
 .tmeal{display:flex;align-items:center;gap:6px;padding:8px 0;border-top:1px solid var(--line)}

@@ -485,6 +485,7 @@ function renderToday(){
       ' Eating every planned meal and snack matters most.</span></button>';}
   var cs=(state.checkins||[]).slice().sort(function(a,b){return a.date<b.date?-1:1;}),lc=cs[cs.length-1];
   if(d===6&&(!lc||(td-parse(lc.date))/864e5>=6))pr+='<button class="prompt" data-act="go" data-tab="progress" data-sec="checkin"><b>Weekly check-in</b><span>Measure your waist, chest and arms, and take a photo if you like. Takes 2 minutes.</span></button>';
+  pr=askRunHTML()+pr;
   if(pr)h+='<div class="prompts">'+pr+'</div>';
   /* training */
   h+='<h2>Training</h2>';
@@ -1873,16 +1874,35 @@ function stravaImport(){
     if(dup){dup.strava=sid;have[sid]=1;added.push(null);return;}
     var type=stravaType(a),sess=runSess(type),key=iso(monday(parse(a.date))),w=getWeek(key);
     var planned=sess&&w.plan.some(function(p){return p.run===sess;})&&!(w.done&&w.done[sess]);
-    var rob={id:uid(),date:a.date,type:type,km:Math.round(a.km*100)/100,sec:Math.round(a.sec),hr:a.hr||null,note:a.name||'',strava:sid};
-    if(!planned)rob.extra=true;
+    var rob={id:uid(),date:a.date,type:type,km:Math.round(a.km*100)/100,sec:Math.round(a.sec),hr:a.hr||null,note:a.name||'',strava:sid,ask:true};
+    if(!planned)rob.extra=true;else rob.marked=sess;
     state.runs.push(rob);have[sid]=1;
     if(planned)markDone(a.date,sess);
     added.push(rob);
   });
   var shown=added.filter(Boolean);
-  if(shown.length===1)toast('From Strava: '+shown[0].type+' run, '+shown[0].km+' km at '+fmtPace(shown[0].sec/shown[0].km)+'/km.');
-  else if(shown.length>1)toast(shown.length+' runs added from Strava.');
+  if(shown.length===1)toast('New run from Strava: '+shown[0].km+' km. Tell me what it was on Today.');
+  else if(shown.length>1)toast(shown.length+' runs added from Strava. Tell me what they were on Today.');
   return added.length>0;
+}
+/* Sets a run's type and moves the plan tick with it: un-ticks the session this run ticked before,
+   and ticks the new one if it's in this week's plan and not done yet. Also stops the "what was this run?" question. */
+function setRunType(r,nt){
+  var key=iso(monday(parse(r.date))),old=r.marked||(!r.extra?runSess(r.type):null);
+  if(old&&state.weeks[key]&&state.weeks[key].done)delete state.weeks[key].done[old];
+  r.type=nt;r.extra=true;delete r.marked;delete r.ask;
+  var ns=runSess(nt),w=getWeek(key);
+  if(ns&&w.plan.some(function(p){return p.run===ns;})&&!(w.done&&w.done[ns])){markDone(r.date,ns);delete r.extra;r.marked=ns;}
+}
+/* Strava runs from the last week you haven't said the type of yet: asked on Today. Ignoring the question keeps the guess. */
+function runsToAsk(){var c7=iso(addDays(todayD(),-7));return state.runs.filter(function(r){return r.ask&&r.date>=c7;}).sort(function(a,b){return a.date<b.date?-1:1;});}
+var ASK_TYPES=[['Easy','Easy'],['Long easy','Long'],['Tempo','Tempo'],['Intervals','Intervals'],['Time trial / race','Time trial / race']];
+function askRunHTML(){
+  return runsToAsk().map(function(r){
+    var when=r.date===iso(todayD())?'today':fmtS(r.date);
+    return '<div class="prompt ask"><b>What was your run '+esc(when)+'?</b><span>'+r.km+' km in '+fmtTime(r.sec)+' ('+fmtPace(r.sec/r.km)+'/km'+(r.hr?', '+r.hr+' bpm':'')+') from Strava. Tap to confirm my guess or pick another.</span>'+
+      '<div class="chips">'+ASK_TYPES.map(function(t){return '<button class="pill'+(t[0]===r.type?' on':'')+'" data-act="askrun" data-id="'+esc(r.id)+'" data-v="'+t[0]+'" aria-pressed="'+(t[0]===r.type)+'">'+t[1]+'</button>';}).join('')+'</div></div>';
+  }).join('');
 }
 if(window.Strava)Strava.onRuns(function(list){
   STRAVA_RUNS=list;
@@ -1894,6 +1914,7 @@ document.addEventListener('click',function(ev){
   var b=ev.target.closest('[data-act]');if(!b)return;
   var act=b.getAttribute('data-act');
   if(act==='tab'){setTab(b.getAttribute('data-tab'));return;}
+  if(act==='askrun'){var arid=b.getAttribute('data-id'),art=b.getAttribute('data-v');state.runs.forEach(function(r){if(r.id===arid)setRunType(r,art);});render();save();toast('Saved as '+art.toLowerCase()+'.');return;}
   if(act==='calm'){var cm=calMonthStart();cm=new Date(cm.getFullYear(),cm.getMonth()+(+b.getAttribute('data-n')),1);ui.calMonth=iso(cm).slice(0,7);ui.calDay=null;saveUi();render();return;}
   if(act==='cald'){var cd=b.getAttribute('data-d');ui.calDay=ui.calDay===cd?null:cd;saveUi();render();return;}
   if(act==='go'){var gk=b.getAttribute('data-k'),gv=b.getAttribute('data-v'),gs=b.getAttribute('data-sec');if(gk){ui.logKind=gk;ui.logDate=null;}if(gv){ui.foodView=gv;if(gv==='today')ui.foodDay=null;}if(gs==='checkin')ui.ciForm=true;setTab(b.getAttribute('data-tab'));if(gs){var se=document.getElementById('sec-'+gs);if(se)se.scrollIntoView({block:'start'});}return;}
@@ -2096,7 +2117,7 @@ document.addEventListener('change',function(ev){
   else if(ev.target.classList&&ev.target.classList.contains('rtype')){
     /* change the type of a run that came from Strava */
     var rid=ev.target.getAttribute('data-id'),nt=ev.target.value;
-    state.runs.forEach(function(r){if(r.id===rid){r.type=nt;var ss=runSess(nt);if(!r.extra&&ss)markDone(r.date,ss);}});
+    state.runs.forEach(function(r){if(r.id===rid)setRunType(r,nt);});
     render();save();toast('Changed to '+nt+'.');
   }
 });
