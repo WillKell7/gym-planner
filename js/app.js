@@ -458,7 +458,9 @@ function renderToday(){
   /* prompts */
   var ws=state.weights.slice().sort(function(a,b){return a.date<b.date?-1:1;}),lw=ws[ws.length-1];
   var pr='';
-  if(!lw||(td-parse(lw.date))/864e5>=6)pr+='<button class="prompt" data-act="go" data-tab="log" data-k="bw"><b>Weigh in</b><span>'+(lw?'Last one was '+fmtS(lw.date):'No weigh-ins yet')+'. Once or twice a week keeps your calorie targets accurate.</span></button>';
+  /* three morning weigh-ins a week (Mon, Wed, Fri), so day-to-day swings average out */
+  var wkW=ws.filter(function(w){return w.date>=key;}).length;
+  if(!(lw&&lw.date===ds)&&wkW<3&&(d===0||d===2||d===4||!lw||(td-parse(lw.date))/864e5>=4))pr+='<button class="prompt" data-act="go" data-tab="log" data-k="bw"><b>Weigh in this morning</b><span>'+(lw?'Last one was '+fmtS(lw.date)+'. ':'No weigh-ins yet. ')+'First thing, after the loo and before you eat or drink. Three mornings a week (Mon, Wed, Fri) evens out day-to-day swings so your calorie target can adjust.</span></button>';
   var wt=weightTrend(iso(addDays(td,-35)));
   if(wt&&wt.perMonth<GAIN_MIN){var la=lastAdj(),recent=la&&la.delta>0&&(td-parse(la.d))/864e5<21,pm=Math.round(wt.perMonth*10)/10;
     pr+='<button class="prompt warn" data-act="go" data-tab="food" data-v="today"><b>'+(pm<=0?'Your weight isn\u2019t going up':'Your weight gain has stalled')+'</b><span>'+(pm>0?'+':'')+pm+'kg a month over the last '+wt.weeks+' weeks, under the '+GAIN_MIN+'\u2013'+GAIN_MAX+'kg aim. '+
@@ -657,7 +659,7 @@ function renderSettings(){
     '<div class="lbl2">Your 5K right now</div><div class="row2"><label>Minutes<input id="st-fm" type="number" inputmode="numeric" min="12" max="45" value="'+Math.floor(FS.sec/60)+'"></label><label>Seconds<input id="st-fs" type="number" inputmode="numeric" min="0" max="59" value="'+Math.round(FS.sec%60)+'"></label></div>'+
     '<p class="hint" style="margin:0">Your best guess at an all-out 5K today. Every run pace is set from it. The app now uses <b>'+fmtTime(FF.sec)+'</b> (from '+FF.src+'). Time trials and faster runs update it by themselves, so you only need this if it feels wrong.</p>'+
     '<div class="err" id="st-err"></div><button class="btn primary" data-act="stsave">Save settings</button></div>';
-  h+='<h2>Calorie auto-adjust</h2><div class="card"><p class="hint" style="margin:0">Every 2 weeks the app checks your weigh-ins from the last 3–5 weeks. If you’re gaining under 0.25kg a month it adds 150 kcal a day; over 1kg a month it takes 150 off. Rice, pasta, oats and bread portions scale to match.</p>'+
+  h+='<h2>Calorie auto-adjust</h2><div class="card"><p class="hint" style="margin:0">Every 2 weeks the app checks your weigh-ins from the last 3–5 weeks. If you’re gaining under '+GAIN_MIN+'kg a month it adds 150 kcal a day; over '+GAIN_MAX+'kg a month it takes 150 off. Rice, pasta, oats and bread portions scale to match.</p>'+
     '<div class="kv"><span>Current adjustment</span><b>'+(F.adj?(F.adj>0?'+':'')+F.adj+' kcal a day':'None yet')+'</b></div>'+
     ((F.adjLog||[]).length?'<ul class="adjlog">'+F.adjLog.slice(-5).reverse().map(function(l){return '<li><b>'+fmtS(l.d)+'</b> '+(l.delta>0?'+':'')+l.delta+' kcal. '+esc(l.why)+'</li>';}).join('')+'</ul>':'')+
     (F.adj?'<button class="btn sm" data-act="stadjreset">Reset to no adjustment</button>':'')+'</div>';
@@ -711,7 +713,7 @@ function refitWeeks(){
   return ch;
 }
 function render(){
-  if(mode!=='pending'&&(upgradePlan()|refitWeeks()|stravaImport()|autoAdjust()))save();
+  if(mode!=='pending'&&(upgradePlan()|refitWeeks()|stravaImport()|autoAdjust()|syncDinners()))save();
   var root=document.getElementById('root');
   var body=ui.tab==='today'?renderToday():ui.tab==='plan'?renderPlan():ui.tab==='log'?renderLog():ui.tab==='food'?renderFood():ui.tab==='settings'?renderSettings():renderProgress();
   root.innerHTML='<header class="top"><div class="top-inner"><div class="brand"><h1>Sub-<span>20</span> Plan</h1><div class="brand-r"><div id="status" class="status"><i></i>Saved</div><button class="gear" data-act="tab" data-tab="settings" aria-label="Settings and backup" aria-pressed="'+(ui.tab==='settings')+'"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="16" cy="7" r="2.2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="10" cy="17" r="2.2" fill="none" stroke="currentColor" stroke-width="2"/></svg></button></div></div>'+
@@ -1289,7 +1291,7 @@ function renderProgress(){
 
   var bw=state.weights.map(function(b){return {t:parse(b.date).getTime(),y:+b.kg};});
   h+='<h2>Bodyweight</h2><div class="card chart">'+lineChart({points:bw,line:true,cls:'acc',fmt:function(v){return (Math.round(v*10)/10)+'kg';},minSpan:2,label:'Bodyweight over time',empty:'Log your weight to see the trend.'})+
-    '<div class="hint" style="margin:0">To build muscle, a slow climb of about 0.25–0.5 kg a month is a good sign.</div></div>';
+    '<div class="hint" style="margin:0">To build muscle, a steady climb of about '+GAIN_MIN+'–'+GAIN_MAX+' kg a month is the aim. Faster than that is mostly fat.</div></div>';
   h+=checkinHTML();
   return h;
 }
@@ -1341,7 +1343,7 @@ var FR={
   fuel:{n:'Toast with honey',t:'2 min',ing:[['bread',2],['honey',20]],steps:['Toast 2 slices from frozen and drizzle with honey.','Have it 1–2 hours before your run. Quick carbs so you’re fuelled for the hard bits.']},
   d_honeychicken:{n:'Honey-soy chicken stir-fry with rice',t:'20 min',ing:[['chicken',200],['pepper',1],['broccoli',150],['garlic',1],['soy',20],['honey',15],['oil',10],['rice',90]],steps:['Start the rice first: rinse 90g rice and boil it in plenty of salted water for 10\u201312 min, then drain.','Mix the sauce: 2 tbsp soy sauce, 1 tbsp honey, 1 crushed garlic clove and 2 tbsp water.','Cut the defrosted chicken into bite-sized pieces. Slice the pepper and cut the broccoli into small florets.','Heat the oil in a wok or large frying pan on high. Stir-fry the chicken for 5–6 min until golden.','Add the pepper, broccoli and a splash of water. Stir-fry 3–4 min until just tender.','Pour in the sauce and let it bubble for about 2 min until it’s sticky and coats the chicken. Check there’s no pink in the middle.','Serve over the rice.'],src:['BBC Good Food: honey chicken','https://bbcgoodfoodme.com/recipes/honey-chicken']},
   d_salmon:{n:'Honey-garlic salmon with rice & broccoli',t:'20 min',ing:[['salmon',2],['garlic',1],['honey',20],['soy',15],['oil',5],['broccoli',150],['rice',90]],steps:['Start the rice first: rinse 90g rice and boil it in plenty of salted water for 10\u201312 min, then drain.','Use salmon defrosted overnight in the fridge. Pat it dry with kitchen paper and season.','Mix 1 tbsp honey, 1 tbsp soy sauce and 1 crushed garlic clove.','Heat the oil in a non-stick pan on medium-high. Cook the salmon 3–4 min until golden, flip, and cook 2 min more.','Turn the heat down, pour in the sauce and let it bubble 1–2 min, spooning it over the salmon until sticky. Watch it, as honey burns fast.','Meanwhile, microwave the broccoli in a covered bowl with 2 tbsp water for 3\u20134 min. Serve with the rice.'],src:['RecipeTin Eats: honey garlic salmon','https://www.recipetineats.com/honey-garlic-salmon/']},
-  d_pasta:{n:'Chicken, tomato & spinach pasta',t:'20 min',ing:[['chicken',200],['onion',0.5],['garlic',2],['tomatoes',1],['spinach',100],['pasta',100],['cheddar',20],['oil',10]],steps:['Boil the pasta in salted water for 10–12 min (check the pack).','Meanwhile, dice the chicken and half the onion, and crush 2 garlic cloves.','Heat the oil in a frying pan. Brown the chicken for 5 min, add the onion for 3 min, then the garlic for 1 min.','Tip in the chopped tomatoes, season, and simmer 5 min until thickened.','Stir in the spinach until it wilts, about 1–2 min.','Drain the pasta, keeping a splash of the water. Toss it through the sauce with that water and top with the cheddar.'],tip:'Wrap the other half of the onion and keep it in the fridge for Friday’s bolognese.',src:['Jo Cooks: tomato spinach chicken pasta','https://www.jocooks.com/recipes/tomato-spinach-chicken-pasta/']},
+  d_pasta:{n:'Chicken, tomato & spinach pasta',t:'20 min',ing:[['chicken',200],['onion',0.5],['garlic',2],['tomatoes',1],['spinach',100],['pasta',100],['cheddar',20],['oil',10]],steps:['Boil the pasta in salted water for 10–12 min (check the pack).','Meanwhile, dice the chicken and half the onion, and crush 2 garlic cloves.','Heat the oil in a frying pan. Brown the chicken for 5 min, add the onion for 3 min, then the garlic for 1 min.','Tip in the chopped tomatoes, season, and simmer 5 min until thickened.','Stir in the spinach until it wilts, about 1–2 min.','Drain the pasta, keeping a splash of the water. Toss it through the sauce with that water and top with the cheddar.'],tip:'Wrap the other half of the onion and keep it in the fridge for the bolognese later in the week.',src:['Jo Cooks: tomato spinach chicken pasta','https://www.jocooks.com/recipes/tomato-spinach-chicken-pasta/']},
   d_beefbowl:{n:'Korean-style beef & rice bowl',t:'20 min',ing:[['mince',250],['garlic',2],['soy',25],['honey',15],['oil',5],['spinach',100],['rice',90]],steps:['Start the rice first: rinse 90g rice and boil it in plenty of salted water for 10\u201312 min, then drain.','Mix 2\u00bd tbsp soy sauce, 1 tbsp honey and 2 crushed garlic cloves.','Heat the oil in a frying pan on high. Add half the pack of mince (250g), break it up, and cook 6–8 min until browned and any liquid has gone.','Pour in the sauce and cook 1–2 min until it coats the beef.','Push the beef to one side, add the spinach and stir until it wilts, about 1 min.','Spoon the beef and spinach over the rice.'],tip:'Put the rest of the mince back in the fridge, sealed, for tomorrow’s bolognese.',src:['Little Sunny Kitchen: Korean beef bowl','https://littlesunnykitchen.com/korean-beef-bowl/']},
   d_bolognese:{n:'Quick spaghetti bolognese',t:'25 min',ing:[['mince',250],['onion',1],['garlic',2],['tomatoes',1],['pasta',100],['cheddar',20],['oil',5]],steps:['Finely chop the onion and crush 2 garlic cloves.','Heat the oil in a saucepan and soften the onion for 5 min. Add the garlic for 1 min.','Turn up the heat, add the mince and brown it for 5 min, breaking it up.','Add the chopped tomatoes and a quarter of the tin filled with water. Season, and simmer 10–15 min until thick.','Meanwhile, cook the pasta for 10–12 min. Drain, top with the sauce and the cheddar.'],src:['Easy Peasy Foodie: easy spaghetti bolognese','https://www.easypeasyfoodie.com/easy-peasy-spaghetti-bolognese/']},
   d_fajita:{n:'Chicken fajitas',t:'20 min',ing:[['chicken',200],['pepper',1],['onion',1],['fajita',0.5],['oil',10],['tortilla',2],['cheddar',20]],steps:['Slice the chicken into strips, and the pepper and onion thinly.','Toss the chicken with half the fajita sachet and a teaspoon of the oil.','Heat the rest of the oil in a large frying pan on high. Cook the onion and pepper for 4 min until they start to char, then push them to the side.','Add the chicken and cook 5–6 min until cooked through.','Warm the wraps for 20 seconds in the microwave. Fill with the chicken and veg, and top with cheese.'],src:['Goodto: Hairy Bikers’ chicken fajitas','https://www.goodtoknow.co.uk/recipes/chicken-fajitas']},
@@ -1355,8 +1357,37 @@ var DINNERS=['d_honeychicken','d_salmon','d_pasta','d_beefbowl','d_bolognese','d
 function fTotals(ing){var k=0,p=0;ing.forEach(function(x){var it=FI[x[0]];var f=it.u==='each'?x[1]:x[1]/100;k+=it.k*f;p+=it.p*f;});return {k:k,p:p};}
 ['prep_burrito','prep_bowl'].forEach(function(r){var R=FR[r],t=fTotals(R.ing);FI[R.makes[0]].k=t.k/R.makes[1];FI[R.makes[0]].p=t.p/R.makes[1];});
 function trainOn(ds){var key=iso(monday(parse(ds)));if(ds<FIRST_DAY)return {gym:null,run:null,key:key};var w=getWeek(key),p=w.plan[dayIdx(parse(ds))];return {gym:p.gym,run:p.run,key:key};}
+/* Dinners for a week, biggest on the hardest days. Days up to tomorrow keep what they were last shown (you may have shopped
+   or defrosted for them); later days re-sort when training moves. The beef bowl goes the day before the bolognese so they share one pack of mince. */
+var DKCAL={},DORD_MEMO={};DINNERS.forEach(function(r){DKCAL[r]=fTotals(FR[r].ing).k;});
+function weekSig(key){var mon=parse(key),a=[];for(var i=0;i<7;i++){var ds=iso(addDays(mon,i)),t=trainOn(ds);a.push((t.gym||'-')+'/'+(t.run||'-')+'/'+(isWfh(ds)?1:0));}return a.join(',');}
+function weekDinners(key){
+  var F=state.food||{},saved=(F.dord||{})[key],sig=weekSig(key);
+  if(saved&&saved.sig===sig&&saved.o&&saved.o.length===7)return saved.o;
+  var mon=parse(key),lockTo=iso(addDays(todayD(),1)),mk=key+'|'+sig+'|'+lockTo+'|'+(saved&&saved.o?saved.o.join():'');
+  if(DORD_MEMO[mk])return DORD_MEMO[mk];
+  var load=[],o=[],i;
+  for(i=0;i<7;i++){var ds=iso(addDays(mon,i)),b=fBurn(ds),x=0;extrasOn(ds).forEach(function(e){x+=e.k;});load.push(b.burn-x);
+    o.push(saved&&saved.o&&ds<=lockTo&&DKCAL[saved.o[i]]!=null?saved.o[i]:null);}
+  var freeD=[],freeR=DINNERS.filter(function(r){return o.indexOf(r)<0;});for(i=0;i<7;i++)if(!o[i])freeD.push(i);
+  var best=null,bs=-Infinity;
+  (function perm(k,left){
+    if(k===freeD.length){var sc=0;for(var j=0;j<7;j++)sc+=load[j]*DKCAL[o[j]];if(o.indexOf('d_bolognese')!==o.indexOf('d_beefbowl')+1)sc-=1e9;if(sc>bs){bs=sc;best=o.slice();}return;}
+    for(var n=0;n<left.length;n++){o[freeD[k]]=left[n];perm(k+1,left.slice(0,n).concat(left.slice(n+1)));}
+    o[freeD[k]]=null;
+  })(0,freeR);
+  return (DORD_MEMO[mk]=best||DINNERS.slice());
+}
+function baseDinner(ds){return weekDinners(iso(monday(parse(ds))))[dayIdx(parse(ds))];}
+/* keep this week's and next week's dinner order saved, so days already shown stay put */
+function syncDinners(){
+  var F=food(),ch=false,k0=curWeekKey();F.dord=F.dord||{};
+  [k0,iso(addDays(parse(k0),7))].forEach(function(k){var sig=weekSig(k),sv=F.dord[k];if(sv&&sv.sig===sig)return;var o=weekDinners(k);F.dord[k]={sig:sig,o:o.slice()};ch=true;});
+  Object.keys(F.dord).forEach(function(k){if(k<iso(addDays(parse(k0),-28))){delete F.dord[k];ch=true;}});
+  return ch;
+}
 function dayPlan(ds){
-  var d=dayIdx(parse(ds)),t=trainOn(ds),sw=(state.food&&state.food.swaps)||{},p={bfast:'porridge',am:'banana_nuts',lunch:d<5?'freezer_lunch':'eggs_beans',pm:'pm_shake',fuel:t.run?'fuel':null,dinner:(sw[ds]&&FR[sw[ds]])?sw[ds]:DINNERS[d],dropped:[]};
+  var d=dayIdx(parse(ds)),t=trainOn(ds),sw=(state.food&&state.food.swaps)||{},p={bfast:'porridge',am:'banana_nuts',lunch:d<5?'freezer_lunch':'eggs_beans',pm:'pm_shake',fuel:t.run?'fuel':null,dinner:(sw[ds]&&FR[sw[ds]])?sw[ds]:baseDinner(ds),dropped:[]};
   var tgt=fBurn(ds).target,tot=0,pro=0,tp=protTarget();
   FSLOTS.forEach(function(s){if(p[s[0]]){var nn=mealNut(p[s[0]],{burrito:1});tot+=nn.k;pro+=nn.p;}});
   ['am','pm'].forEach(function(sl){var nn=mealNut(p[sl],{burrito:1});if(tot-nn.k>=tgt-100&&pro-nn.p>=tp){p.dropped.push(sl);tot-=nn.k;pro-=nn.p;p[sl]=null;}});
@@ -1366,6 +1397,8 @@ function sett(){var s0=state.settings||{};return {height:+s0.height||177.8,age:+
 function protTarget(){return sett().protein;}
 /* Working from home on a given date: a one-off choice made on the Today page wins, otherwise the usual days from Settings. Weekends never count as a commute. */
 function isWfh(ds){var d=dayIdx(parse(ds));if(d>=5)return true;var o=(state.settings||{}).wfhDays;if(o&&typeof o[ds]==='boolean')return o[ds];return !!sett().wfh[d];}
+/* Starting surplus on top of the estimated burn. The 2-weekly auto-adjust moves it from there. */
+var SURPLUS=1.10;
 function fBurn(ds){
   var S=sett(),kg=bodyKg(),bmr=10*kg+6.25*S.height-5*S.age+5,base=bmr*1.3,d=dayIdx(parse(ds)),t=trainOn(ds),parts=[],burn=base;
   if(!isWfh(ds)){burn+=195;parts.push('cycling to work');}
@@ -1373,7 +1406,7 @@ function fBurn(ds){
   if(t.run){var hv=t.run==='hard'?hardVariant(t.key):'long',hi2=t.run==='hard'?hardInfo(hv,t.key):null;burn+=t.run==='long'?Math.round(LONG_MIN[blockWeek(t.key)]*10.5):t.run==='easy'?Math.round(EASY_MIN[blockWeek(t.key)]*10.5):hv==='trial'?400:hv==='intervals'?180+50*hi2.reps:180+12.5*hi2.min;parts.push(t.run==='long'?'long run':t.run==='easy'?'easy run':hi2.title.toLowerCase());}
   extrasOn(ds).forEach(function(x){burn+=x.k;parts.push(x.n.toLowerCase());});
   var adj=(state.food&&state.food.adj)||0;
-  return {burn:burn,parts:parts,adj:adj,target:Math.round((burn*1.07+adj)/50)*50};
+  return {burn:burn,parts:parts,adj:adj,target:Math.round((burn*SURPLUS+adj)/50)*50};
 }
 function lunchPick(st){return (st.burrito||0)>=1?'burrito':(st.bowl||0)>=1?'bowl':null;}
 var CARB={oats:1,rice:1,pasta:1,bread:1};
@@ -1402,7 +1435,7 @@ function dayTotals(ds,plan,mk,st,mode){
   return r;
 }
 /* Bodyweight trend in kg a month from weigh-ins on or after `from`. Null until there are 3 weigh-ins spread over at least 3 weeks. */
-var GAIN_MIN=0.25,GAIN_MAX=1;
+var GAIN_MIN=0.5,GAIN_MAX=1;
 function weightTrend(from){
   var rec=state.weights.filter(function(w){return w.date>=from;}).sort(function(a,b){return a.date<b.date?-1:1;});
   if(rec.length<3)return null;
@@ -1420,7 +1453,7 @@ function autoAdjust(){
   var from=iso(addDays(today,-35)),la=lastAdj();if(la&&la.d>from)from=la.d;
   var tr=weightTrend(from);if(!tr)return false;
   var perMonth=tr.perMonth,delta=0,why='';
-  if(perMonth<GAIN_MIN){delta=150;why='Gaining '+(Math.round(perMonth*10)/10)+'kg a month, under the 0.25\u20131kg aim';}
+  if(perMonth<GAIN_MIN){delta=150;why='Gaining '+(Math.round(perMonth*10)/10)+'kg a month, under the '+GAIN_MIN+'\u2013'+GAIN_MAX+'kg aim';}
   else if(perMonth>GAIN_MAX){delta=-150;why='Gaining '+(Math.round(perMonth*10)/10)+'kg a month, faster than needed';}
   F.adjAt=iso(today);
   if(!delta)return true;
@@ -1550,7 +1583,7 @@ function weightAdvice(){
   if(perMonth>GAIN_MAX)return 'Gaining about '+(Math.round(perMonth*10)/10)+'kg a month, faster than needed.';
   return 'Gaining about '+(Math.round(perMonth*10)/10)+'kg a month. That’s right on target.';
 }
-function plan0dinner(ds){var sw=(food().swaps||{})[ds];return sw||DINNERS[dayIdx(parse(ds))];}
+function plan0dinner(ds){var sw=(food().swaps||{})[ds];return sw||baseDinner(ds);}
 function adjNote(){var F=food();if(!F.adj)return ' Targets adjust themselves every 2 weeks once you have 3 weeks of weigh-ins.';var l=(F.adjLog||[])[F.adjLog.length-1];return ' <b>Auto-adjusted '+(F.adj>0?'+':'')+F.adj+' kcal a day</b>'+(l?' (last change '+fmtS(l.d)+': '+l.why+')':'')+'. Rice, pasta, oats and bread portions are scaled \u00d7'+(F.carb||1)+' to match.';}
 var XPRESETS=[['Light meal',550,30],['Normal meal',850,40],['Big meal or takeaway',1300,45],['Snack',250,8],['Pint of beer',200,2]];
 function extraForm(ds,slot){
@@ -1608,7 +1641,7 @@ function renderFoodDay(){
   h+='<div class="meals">'+slotsFor(plan).map(function(s){return mealHTML(ds,s[0],s[1],plan[s[0]],mk,mode,st);}).join('')+'</div>';
   h+=(ui.fxOpen===ds?extraForm(ds,'extra'):'<button class="btn sm" style="margin-top:10px" data-act="fxopen" data-d="'+ds+'">+ Add something else I ate</button>');
   var wk=0;for(var j=0;j<7;j++)wk+=fBurn(iso(addDays(monday(dd),j))).target;
-  h+='<h2>Targets</h2><div class="card"><div class="hint" style="margin:0">Each day\u2019s target is your estimated burn plus about 7%, using that day\u2019s training from the Training tab, so it follows any sessions you move. This week averages <b>'+(Math.round(wk/7/10)*10).toLocaleString('en-GB')+' kcal</b>, with at least <b>'+protTarget()+'g protein</b>. The weekly average matters more than any single day. '+weightAdvice()+adjNote()+'</div></div>';
+  h+='<h2>Targets</h2><div class="card"><div class="hint" style="margin:0">Each day\u2019s target is your estimated burn plus about 10%, using that day\u2019s training from the Training tab, so it follows any sessions you move. This week averages <b>'+(Math.round(wk/7/10)*10).toLocaleString('en-GB')+' kcal</b>, with at least <b>'+protTarget()+'g protein</b>. The weekly average matters more than any single day. '+weightAdvice()+adjNote()+'</div></div>';
   return h;
 }
 function renderFoodWeek(){
@@ -1620,7 +1653,7 @@ function renderFoodWeek(){
     slotsFor(plan).forEach(function(s){var m=mk[s[0]];if(m&&m.s==='o'){k+=m.k||0;p+=m.p||0;return;}if(m&&m.s==='x'){sk++;return;}var n=mealNut(plan[s[0]],{burrito:1});k+=n.k;p+=n.p;});
     h+='<button class="fday'+(ds===today?' today':'')+(ds<F.start?' past':'')+'" data-act="fopen" data-d="'+ds+'"><span class="dname">'+DAYS[d]+'</span><span class="fdmain"><b>'+esc(FR[plan.dinner].n)+'</b><span>'+(plan.lunch==='freezer_lunch'?'Freezer lunch':esc(FR[plan.lunch].n))+(sk?' · '+sk+' skipped':'')+'</span></span><span class="num">'+Math.round(k).toLocaleString('en-GB')+' / '+fBurn(ds).target.toLocaleString('en-GB')+'<br>'+Math.round(p)+'g protein</span></button>';
   }
-  h+='</div><p class="hint" style="margin-top:12px">Every day: porridge, banana and nuts, and a protein shake. Run days add toast and honey before the run, and there\u2019s nothing after dinner. Weekday lunches come from the freezer, and Sunday is prep day when you\u2019re running low. Numbers show planned / target kcal.</p>';
+  h+='</div><p class="hint" style="margin-top:12px">The biggest dinners go on your hardest training days. Every day: porridge, banana and nuts, and a protein shake. Run days add toast and honey before the run, and there\u2019s nothing after dinner. Weekday lunches come from the freezer, and Sunday is prep day when you\u2019re running low. Numbers show planned / target kcal.</p>';
   return h;
 }
 function renderShop(){
@@ -2068,7 +2101,7 @@ document.addEventListener('input',function(ev){
 document.addEventListener('input',function(ev){if(ev.target.id==='ac-min')actLive();});
 document.addEventListener('change',function(ev){
   var t=ev.target;
-  if(t.getAttribute&&t.getAttribute('data-swap')){var F=food(),ds=t.getAttribute('data-swap');F.swaps=F.swaps||{};if(t.value===DINNERS[dayIdx(parse(ds))])delete F.swaps[ds];else F.swaps[ds]=t.value;render();save();return;}
+  if(t.getAttribute&&t.getAttribute('data-swap')){var F=food(),ds=t.getAttribute('data-swap');F.swaps=F.swaps||{};if(t.value===baseDinner(ds))delete F.swaps[ds];else F.swaps[ds]=t.value;render();save();return;}
   if(t.id==='bk-file'&&t.files&&t.files[0]){
     var rd=new FileReader();
     rd.onload=function(){var msg=document.getElementById('bk-msg');try{var o=JSON.parse(rd.result),st0=o&&o.state?o.state:o;if(!st0||typeof st0!=='object'||!Array.isArray(st0.workouts)||!st0.weeks)throw 0;RESTORE={st:st0,when:o.exported?new Date(o.exported).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'an unknown date'};if(msg)msg.innerHTML=restoreSummary();}catch(e){RESTORE=null;if(msg)msg.innerHTML='<div class="err">That file isn\u2019t a backup from this app.</div>';}};
