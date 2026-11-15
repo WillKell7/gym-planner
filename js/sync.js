@@ -38,6 +38,9 @@
     return m + (e.code ? ' [' + e.code + ']' : '');
   }
   function setErr(e) { diag.err = e ? errText(e) : null; if (e) console.warn('Sync problem:', e); notify(); }
+  var oldHits = [];
+  // True while an out-of-date copy of the app, open on another device or tab, keeps saving over this one.
+  function oldCopyAbout() { var t = Date.now() - 120000; return oldHits.filter(function (x) { return x > t; }).length >= 3; }
   function notify() { try { if (window.appRefreshStatus) window.appRefreshStatus(); } catch (x) {} }
 
   /* ---------- small helpers ---------- */
@@ -140,15 +143,73 @@
     };
   }
 
+  /* ---------- merging: combine this device's change with another device's ---------- */
+  // Stable text form of a value (object keys sorted), so two copies can be compared
+  // even though the database returns keys in a different order.
+  function canon(v) {
+    if (v === undefined) return 'undefined';
+    if (v === null || typeof v !== 'object') return JSON.stringify(v);
+    if (Array.isArray(v)) return '[' + v.map(canon).join(',') + ']';
+    return '{' + Object.keys(v).sort().map(function (k) { return JSON.stringify(k) + ':' + canon(v[k]); }).join(',') + '}';
+  }
+  function same(a, b) { return canon(a) === canon(b); }
+  function isObj(x) { return !!x && typeof x === 'object' && !Array.isArray(x); }
+  function mergeKeyed(b, l, r, lKeys, rKeys) {
+    // b, l, r are maps; returns [key, value] pairs: the other device's order first, then anything only added here
+    var out = [], seen = {};
+    rKeys.concat(lKeys).forEach(function (k) {
+      if (seen[k]) return; seen[k] = 1;
+      var inB = k in b, inL = k in l, inR = k in r;
+      if (inL && inR) out.push([k, merge3(b[k], l[k], r[k])]);
+      else if (inR) { if (!(inB && same(b[k], r[k]))) out.push([k, r[k]]); }   // else: removed here
+      else if (inL) { if (!(inB && same(b[k], l[k]))) out.push([k, l[k]]); }   // else: removed there
+    });
+    return out;
+  }
+  // base = the last version both sides agreed on; local = this device; remote = the server.
+  // Keeps both sides' changes; where both changed the very same value, this device wins.
+  function merge3(base, local, remote) {
+    if (same(local, remote)) return local;
+    if (same(base, local)) return remote;
+    if (same(base, remote)) return local;
+    if (isObj(local) && isObj(remote)) {
+      var o = {};
+      mergeKeyed(isObj(base) ? base : {}, local, remote, Object.keys(local), Object.keys(remote)).forEach(function (p) { o[p[0]] = p[1]; });
+      return o;
+    }
+    if (Array.isArray(local) && Array.isArray(remote)) {
+      var b = Array.isArray(base) ? base : [], all = b.concat(local, remote);
+      var keyOf = null;
+      if (all.every(function (x) { return isObj(x) && x.id != null; })) keyOf = function (x) { return 'id:' + x.id; };
+      else if (b.length === local.length && local.length === remote.length) return local.map(function (x, i) { return merge3(b[i], x, remote[i]); });
+      else if (all.every(isObj)) keyOf = canon;
+      if (!keyOf) return local;
+      var toMap = function (arr) { var m = {}; arr.forEach(function (x) { m[keyOf(x)] = x; }); return m; };
+      return mergeKeyed(toMap(b), toMap(local), toMap(remote), local.map(keyOf), remote.map(keyOf)).map(function (p) { return p[1]; });
+    }
+    return local;
+  }
+
   /* ---------- db: the interface app.js expects ---------- */
+  /*
+   * Every chunk on the server carries a version number (`_rev` inside its data).
+   *  - An upload only goes through if the server still has the version this device last saw.
+   *    If another device got there first, the two are merged and the upload is retried.
+   *  - Anything arriving from the server that is older than what this device already has is ignored,
+   *    so a slow or out-of-order reply can never undo a newer change.
+   */
   function makeDb(u) {
-    var CK = 'sync-cache:' + u.id, QK = 'sync-queue:' + u.id;
-    var cache = lsGet(CK) || {};   // last known copy of every chunk
-    var queue = lsGet(QK) || {};   // chunks changed here and not yet uploaded
+    var CK = 'sync-cache:' + u.id, QK = 'sync-queue:' + u.id, BK = 'sync-base:' + u.id;
+    var cache = lsGet(CK) || {};   // every chunk as this device sees it (includes changes not yet uploaded)
+    var queue = lsGet(QK) || {};   // ids of chunks changed here and not yet uploaded
+    var base = lsGet(BK) || {};    // id -> { rev, data }: the last server version this device has seen
     var listeners = [], flushing = false, fetchTimer = null, retryTimer = null;
 
-    function persist() { lsSet(CK, cache); lsSet(QK, queue); diag.pending = Object.keys(queue).length; }
+    function persist() { lsSet(CK, cache); lsSet(QK, queue); lsSet(BK, base); diag.pending = Object.keys(queue).length; }
     function pending() { return Object.keys(queue).length > 0; }
+    function clone(o) { return JSON.parse(JSON.stringify(o)); }
+    function revOf(d) { return d && typeof d._rev === 'number' ? d._rev : 0; }
+    function strip(d) { var o = {}; Object.keys(d || {}).forEach(function (k) { if (k !== '_rev') o[k] = d[k]; }); return o; }
 
     function emit(fromCache) {
       var docs = Object.keys(cache).map(function (id) { var d = cache[id]; return { id: id, data: function () { return d; } }; });
@@ -156,39 +217,86 @@
       listeners.forEach(function (l) { try { l.cb(snap); } catch (e) { console.error(e); } });
     }
 
+    // A row has arrived from the server (download, live update, or after a clash). Returns true if it changed anything.
+    function incoming(id, rawData) {
+      var r = revOf(rawData), d = strip(rawData), b = base[id];
+      // A write with no version number over one that had it can only come from an old copy of the app open somewhere.
+      if (b && b.rev && !r) { oldHits.push(Date.now()); if (oldHits.length > 20) oldHits.shift(); }
+      if (b) {
+        if (r && r <= b.rev) return false;                 // older than, or the same as, what we already have
+        if (!r && same(d, b.data)) return false;           // written by an old copy of the app: only take it if it differs
+      }
+      base[id] = { rev: r, data: d };
+      if (queue[id]) {
+        var m = merge3(b ? b.data : undefined, cache[id], d);
+        cache[id] = m;
+        if (same(m, d)) delete queue[id];
+      } else cache[id] = d;
+      return true;
+    }
+
     function fetchRemote() {
       return sb.from(TABLE).select('id,data').eq('user_id', u.id).then(function (r) {
         if (r.error) throw r.error;
-        var next = {};
-        (r.data || []).forEach(function (row) { next[row.id] = row.data; });
-        Object.keys(queue).forEach(function (id) { next[id] = queue[id]; }); // local changes win until uploaded
-        cache = next; persist();
+        var changed = false;
+        (r.data || []).forEach(function (row) { if (incoming(row.id, row.data)) changed = true; });
+        persist();
         diag.lastDown = Date.now(); if (!pending()) setErr(null); else notify();
-        return true;
+        return changed;
       }).catch(function (e) { setErr(e); throw e; });
     }
     function refresh() {
       clearTimeout(fetchTimer);
       fetchTimer = setTimeout(function () {
         if (!navigator.onLine) return;
-        fetchRemote().then(function () { emit(false); flushQueue(); }).catch(function () {});
+        fetchRemote().then(function (changed) { if (changed) emit(false); flushQueue(); }).catch(function () {});
       }, 250);
     }
 
+    // Upload one chunk. Resolves true when the server has it, false when it clashed and was merged (try again).
+    function pushOne(id) {
+      var local = cache[id], b = base[id], sentText = canon(local);
+      var newRev = (b ? b.rev : 0) + 1;
+      var data = clone(local); data._rev = newRev;
+      var q;
+      if (!b) q = sb.from(TABLE).insert({ user_id: u.id, id: id, data: data }).select('id');
+      else {
+        q = sb.from(TABLE).update({ data: data, updated_at: new Date().toISOString() }).eq('user_id', u.id).eq('id', id);
+        q = (b.rev ? q.eq('data->>_rev', String(b.rev)) : q.is('data->_rev', null)).select('id');
+      }
+      return q.then(function (r) {
+        var clash = r.error ? r.error.code === '23505' : !(r.data && r.data.length);
+        if (r.error && !clash) throw r.error;
+        if (!clash) {
+          base[id] = { rev: newRev, data: strip(data) };
+          if (canon(cache[id]) === sentText) delete queue[id];   // unless it changed again while uploading
+          persist();
+          return true;
+        }
+        // Another device changed this chunk first: fetch its version, merge, and let the caller retry.
+        return sb.from(TABLE).select('id,data').eq('user_id', u.id).eq('id', id).then(function (g) {
+          if (g.error) throw g.error;
+          var row = g.data && g.data[0];
+          if (row) incoming(id, row.data); else delete base[id];   // the row has gone: upload it afresh
+          persist();
+          return false;
+        });
+      });
+    }
     function flushQueue() {
       if (flushing || !pending()) return Promise.resolve();
       if (!navigator.onLine) return Promise.resolve();
       flushing = true;
-      var ids = Object.keys(queue);
-      var rows = ids.map(function (id) { return { user_id: u.id, id: id, data: queue[id], updated_at: new Date().toISOString() }; });
-      var sent = ids.map(function (id) { return JSON.stringify(queue[id]); });
-      return sb.from(TABLE).upsert(rows, { onConflict: 'user_id,id' }).then(function (r) {
+      var tries = 0;
+      function next() {
+        var ids = Object.keys(queue);
+        if (!ids.length) return Promise.resolve();
+        if (++tries > 40) return Promise.reject(new Error('Could not upload after several tries'));
+        return pushOne(ids[0]).then(next);
+      }
+      return next().then(function () {
         flushing = false;
-        if (r.error) throw r.error;
         diag.lastUp = Date.now(); diag.err = null;
-        ids.forEach(function (id, i) { if (queue[id] !== undefined && JSON.stringify(queue[id]) === sent[i]) delete queue[id]; });
-        persist();
-        if (pending()) return flushQueue();
         notify();
         emit(false);
       }).catch(function (e) {
@@ -203,8 +311,9 @@
       sb.channel('app_docs_' + u.id)
         .on('postgres_changes', { event: '*', schema: 'public', table: TABLE, filter: 'user_id=eq.' + u.id }, function (p) {
           var row = p.new && p.new.id ? p.new : null;
-          if (!row || queue[row.id] !== undefined) return;
-          cache[row.id] = row.data; persist(); emit(false);
+          if (!row) return;
+          if (!row.data || typeof row.data !== 'object') { refresh(); return; }
+          if (incoming(row.id, row.data)) { persist(); if (pending()) flushQueue(); else emit(false); }
         })
         .subscribe();
     } catch (e) {}
@@ -245,9 +354,12 @@
       doc: function (path) {
         var id = String(path).split('/').pop();
         return {
-          set: function (data) {
-            var d = JSON.parse(JSON.stringify(data));
-            queue[id] = d; cache[id] = d; persist();
+          // seen = the copy of this chunk the app based its change on. If something newer has
+          // arrived since (and the app hasn't shown it yet), merge instead of overwriting it.
+          set: function (data, seen) {
+            var d = clone(data);
+            if (seen !== undefined && cache[id] !== undefined && !same(cache[id], seen)) d = merge3(seen, d, cache[id]);
+            cache[id] = d; queue[id] = 1; persist();
             setTimeout(flushQueue, 0);
             return Promise.resolve();
           }
@@ -424,8 +536,37 @@
 
   /* ---------- account card shown at the bottom of Settings ---------- */
   function ago(t) { if (!t) return 'not yet'; var s = Math.round((Date.now() - t) / 1000); return s < 60 ? 'just now' : s < 3600 ? Math.round(s / 60) + ' min ago' : new Date(t).toLocaleString('en-GB'); }
+  /* ---------- pick up new versions of the app without being asked ---------- */
+  // An open copy of the app keeps running the code it loaded. After an update, an old copy can undo
+  // what the new one does, so check now and then whether the site has changed and reload when it has.
+  var loadedTag = null, lastCheck = 0;
+  function checkForUpdate() {
+    if (location.protocol === 'file:' || !navigator.onLine || Date.now() - lastCheck < 20000) return;
+    lastCheck = Date.now();
+    try { if (navigator.serviceWorker) navigator.serviceWorker.getRegistration().then(function (r) { if (r) r.update(); }).catch(function () {}); } catch (e) {}
+    Promise.all(['js/app.js', 'js/sync.js', 'index.html'].map(function (f) {
+      return fetch(f, { method: 'HEAD', cache: 'no-store' }).then(function (r) { return r.ok ? (r.headers.get('etag') || r.headers.get('last-modified') || '') : null; });
+    })).then(function (tags) {
+      if (tags.indexOf(null) >= 0) return;
+      var t = tags.join('|');
+      if (!t.replace(/\|/g, '')) return;
+      if (loadedTag === null) { loadedTag = t; return; }
+      if (t !== loadedTag) reloadWhenIdle();
+    }).catch(function () {});
+  }
+  function reloadWhenIdle() {
+    if (window.appCanReload && !window.appCanReload()) { setTimeout(reloadWhenIdle, 5000); return; }
+    location.reload();
+  }
+  checkForUpdate();
+  setInterval(function () { if (document.visibilityState === 'visible') checkForUpdate(); }, 60000);
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') checkForUpdate(); });
+
   window.Sync = {
-    problem: function () { return user && diag.err ? 'Not syncing. See Settings' : ''; },
+    canon: canon,
+    updateNow: reloadWhenIdle,
+    oldCopyAbout: oldCopyAbout,
+    problem: function () { return user && diag.err ? 'Not syncing. See Settings' : user && oldCopyAbout() ? 'Old version open on another device. Close and reopen the app there' : ''; },
     accountHtml: function () {
       var h = '<h2>Account and sync</h2><div class="card">';
       if (!sb) h += '<p class="hint" style="margin:0">Sync isn’t set up yet, so data stays on this device. Add your Supabase keys to js/config.js to turn it on.</p>';
@@ -434,6 +575,7 @@
         '<div class="kv"><span>Last download</span><b>' + ago(diag.lastDown) + '</b></div>' +
         '<div class="kv"><span>Changes waiting to upload</span><b>' + diag.pending + '</b></div>' +
         (diag.err ? '<p class="err">Sync problem: ' + esc(diag.err) + '</p>' : '') +
+        (oldCopyAbout() ? '<p class="err">An out-of-date copy of the app is open on another device or browser tab and keeps saving over this one. Close the app there and open it again.</p>' : '') +
         '<div class="row2"><button class="btn sm" data-sync="now">Sync now</button><button class="btn sm" data-sync="out">Sign out</button></div>';
       else h += '<p class="hint" style="margin:0">Not signed in, so data stays on this device. Sign in to sync with your other devices. Anything saved here moves into your account the first time you sign in.</p><button class="btn primary" data-sync="in">Sign in</button>';
       return h + '</div>';
