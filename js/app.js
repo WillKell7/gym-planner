@@ -419,7 +419,20 @@ function foodAlertsHTML(sim,F,st){
   useSoon(sim).forEach(function(u){
     alerts+='<div class="falert warn"><b>'+(u.left<0?'Check the '+FI[u.i].n.toLowerCase()+' is still OK':'Use the '+FI[u.i].n.toLowerCase()+' '+(u.left<=0?'today':u.left===1?'by tomorrow':'in the next 2 days'))+'</b><span>You have '+fmtQ(u.i,sim.st[u.i])+'.'+(FI[u.i].tip?' '+FI[u.i].tip:'')+'</span></div>';
   });
+  alerts+=shopAlertHTML(sim,F);
   return alerts?'<div class="falerts">'+alerts+'</div>':'';
+}
+/* compact Today reminder: things you're out of or will run out of in the next 3 days, plus one-off extras */
+function nameList(a,max){if(a.length>max){var n=a.length-max+1;a=a.slice(0,max-1).concat([n+' more']);}return a.length>1?a.slice(0,-1).join(', ')+' and '+a[a.length-1]:a[0];}
+function shopAlertHTML(sim,F){
+  var oo=F.oneoffs||[],out=[],low=[];
+  if(F.setup){var pj=fProject(3,sim);Object.keys(pj.short).forEach(function(i){if(FI[i].opt)return;(pj.st[i]>0?low:out).push(FI[i].n.toLowerCase());});}
+  var n=out.length+low.length+oo.length;if(!n)return '';
+  var bits=[];
+  if(out.length)bits.push('Out of '+nameList(out,3)+'.');
+  if(low.length)bits.push((out.length?'Also running':'Running')+' low on '+nameList(low,3)+'.');
+  if(oo.length)bits.push((bits.length?'Plus ':'Extras: ')+nameList(oo.map(function(x){return esc(x.n.charAt(0).toLowerCase()+x.n.slice(1));}),3)+'.');
+  return '<button class="falert shop" data-act="go" data-tab="food" data-v="shop"><b>Shopping: '+n+' thing'+(n===1?'':'s')+' to get</b><span>'+bits.join(' ')+'</span></button>';
 }
 function renderToday(){
   var F=food(),td=todayD(),ds=iso(td),key=curWeekKey(),w=getWeek(key),d=dayIdx(td),p=w.plan[d],h='';
@@ -1471,6 +1484,7 @@ function renderShop(){
       '<div class="smain"><div class="sname">'+esc(FI[i].n)+'</div><div class="ssub">'+sub+'</div></div>'+
       '<div class="sstep"><button data-act="fpack" data-i="'+i+'" data-n="'+(n-1)+'" aria-label="Fewer">−</button><span>'+packText(i,FI[i].pk===1?n:n)+'</span><button data-act="fpack" data-i="'+i+'" data-n="'+(n+1)+'" aria-label="More">+</button></div></div>';
   }
+  h+=oneoffsHTML();
   if(!ids.length)h+='<div class="empty">Nothing to buy for the next '+H+' days. You’re stocked up.</div>';
   FCATS.forEach(function(cat){
     var list=ids.filter(function(i){return FI[i].c===cat;});if(!list.length)return;
@@ -1483,6 +1497,15 @@ function renderShop(){
   var nt=Object.keys(c).filter(function(i){return c[i].t;}).length;
   h+='<div class="shopbar"><button class="btn" data-act="fcopy">Copy list</button><button class="btn primary" data-act="fbought"'+(nt?'':' disabled')+'>Add '+nt+' ticked to pantry</button></div>';
   return h;
+}
+var OO_UNDO=null;
+function oneoffsHTML(){
+  var oo=food().oneoffs||[],u=OO_UNDO,h='<h2>Extras</h2><div class="card slist oneoffs">';
+  h+='<div class="oadd"><input id="oo-n" placeholder="One-off, e.g. toilet paper" maxlength="60" enterkeyhint="done" aria-label="Add a one-off item"><button class="btn sm" data-act="foadd">Add</button></div>';
+  h+=oo.map(function(x){return '<div class="srow"><button class="stick" data-act="fotick" data-id="'+x.id+'" aria-pressed="false" aria-label="Got '+esc(x.n)+'"></button><div class="smain"><div class="sname">'+esc(x.n)+'</div></div></div>';}).join('');
+  if(u)h+='<div class="srow ticked"><button class="stick" data-act="foundo" aria-pressed="true" aria-label="Undo">✓</button><div class="smain"><div class="sname">'+esc(u.n)+'</div><div class="ssub">Got it, removed from the list. <button class="linkbtn" data-act="foundo">Undo</button></div></div></div>';
+  if(!oo.length&&!u)h+='<div class="ssub" style="padding:6px 0 2px">For anything not in the meal plan. Tick it off in the shop and it’s gone.</div>';
+  return h+'</div>';
 }
 function pStep(it){if(it.u==='each')return 1;var t=it.pk/20,c=[5,10,20,25,50,100],r=5;c.forEach(function(x){if(x<=t)r=x;});return r;}
 function pUnit(it){return it.u==='each'?((it.un||['',''])[1]||'items'):it.u;}
@@ -1535,7 +1558,10 @@ document.addEventListener('click',function(ev){
   var b=ev.target.closest('[data-act]');if(!b)return;
   var act=b.getAttribute('data-act');if(act.charAt(0)!=='f')return;
   var F=food();
-  if(act==='fview'){ui.foodView=b.getAttribute('data-v');saveUi();render();window.scrollTo(0,0);return;}
+  if(act==='foadd'){var on=document.getElementById('oo-n'),nm=on?on.value.trim():'';if(!nm){if(on)on.focus();return;}(F.oneoffs=F.oneoffs||[]).push({id:uid(),n:nm.slice(0,60),ts:Date.now()});OO_UNDO=null;render();save();var on2=document.getElementById('oo-n');if(on2){try{on2.focus({preventScroll:true});}catch(e){}}return;}
+  if(act==='fotick'){var oid=b.getAttribute('data-id'),oit=(F.oneoffs||[]).filter(function(x){return x.id===oid;})[0];if(!oit)return;F.oneoffs=F.oneoffs.filter(function(x){return x.id!==oid;});OO_UNDO=oit;render();save();return;}
+  if(act==='foundo'){if(OO_UNDO){(F.oneoffs=F.oneoffs||[]).push(OO_UNDO);OO_UNDO=null;render();save();}return;}
+  if(act==='fview'){OO_UNDO=null;ui.foodView=b.getAttribute('data-v');saveUi();render();window.scrollTo(0,0);return;}
   if(act==='fday'){var cur=ui.foodDay||(iso(todayD())<F.start?F.start:iso(todayD()));ui.foodDay=iso(addDays(parse(cur),+b.getAttribute('data-n')));if(ui.foodDay<F.start)ui.foodDay=F.start;saveUi();render();return;}
   if(act==='fweek'){ui.foodWeekOff=(ui.foodWeekOff||0)+(+b.getAttribute('data-n'));saveUi();render();return;}
   if(act==='fopen'){ui.foodDay=b.getAttribute('data-d');ui.foodView='today';saveUi();render();window.scrollTo(0,0);return;}
@@ -1571,6 +1597,7 @@ document.addEventListener('click',function(ev){
   if(act==='fcopy'){
     var pj=fProject(F.horizon||7),c4=cart(),lines=[];
     FCATS.forEach(function(cat){var l=Object.keys(pj.short).filter(function(i){return FI[i].c===cat&&!FI[i].opt;});if(!l.length)return;lines.push(cat.toUpperCase());l.forEach(function(i){var n=c4[i]?c4[i].n:packsFor(i,pj.short[i]);lines.push('- '+FI[i].n+': '+packText(i,n));});lines.push('');});
+    if((F.oneoffs||[]).length){lines.push('EXTRAS');F.oneoffs.forEach(function(x){lines.push('- '+x.n);});lines.push('');}
     var txt=lines.join('\n');
     try{navigator.clipboard.writeText(txt).then(function(){toast('Shopping list copied.');},function(){toast('Couldn\u2019t copy. Your browser blocked it.');});}catch(e){toast('Couldn\u2019t copy. Your browser blocked it.');}
     return;
@@ -1894,7 +1921,7 @@ document.addEventListener('change',function(ev){
     rd.readAsText(t.files[0]);
   }
 });
-document.addEventListener('keydown',function(ev){if(ev.target.id==='pe-q'&&ev.key==='Enter'){var b=document.querySelector('[data-act="fpsave"]');if(b)b.click();}});
+document.addEventListener('keydown',function(ev){if(ev.target.id==='oo-n'&&ev.key==='Enter'){ev.preventDefault();var ob=document.querySelector('[data-act="foadd"]');if(ob)ob.click();return;}if(ev.target.id==='pe-q'&&ev.key==='Enter'){var b=document.querySelector('[data-act="fpsave"]');if(b)b.click();}});
 document.addEventListener('toggle',function(ev){var t=ev.target;if(t&&t.tagName==='DETAILS'&&t.getAttribute('data-ok')){openDetails[t.getAttribute('data-ok')]=t.open;}},true);
 window.addEventListener('hashchange',function(){var h=location.hash.slice(1);if(TABS.indexOf(h)>=0&&h!==ui.tab){ui.tab=h;saveUi();render();}});
 var rz=null;window.addEventListener('resize',function(){clearTimeout(rz);rz=setTimeout(function(){if(ui.tab==='progress')render();},200);});
