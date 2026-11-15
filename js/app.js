@@ -377,6 +377,7 @@ function renderToday(){
   var F=food(),td=todayD(),ds=iso(td),key=curWeekKey(),w=getWeek(key),d=dayIdx(td),p=w.plan[d],h='';
   var idx=weekIdx(key),variant=hardVariant(key);
   h+='<div class="tday"><div class="tdate">'+['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][d]+' '+fmtD(td)+'</div><div class="sub">'+(w.pool?'Day 1':idx>=0?'Week '+(idx+1)+' of 12':'Before the plan')+(isDeload(key)?' · lighter week':'')+'</div></div>';
+  if(d<5){var wf=isWfh(ds);h+='<div class="chips" style="margin:0 0 12px"><button class="pill'+(wf?' on':'')+'" data-act="wfhtoday" aria-pressed="'+wf+'">'+(wf?'Working from home today ✓':'Working from home today?')+'</button><span class="hint" style="margin:0;align-self:center">'+(wf?'No cycle counted, so today’s calorie target is about 200 lower.':'Cycle to work is counted.')+'</span></div>';}
   /* prompts */
   var ws=state.weights.slice().sort(function(a,b){return a.date<b.date?-1:1;}),lw=ws[ws.length-1];
   var pr='';
@@ -568,8 +569,8 @@ function renderSettings(){
   var S=sett(),F=food(),kg=bodyKg(),h='<h2>Settings</h2><div class="card">';
   h+='<div class="row3"><label>Height (cm)<input id="st-h" type="number" inputmode="decimal" step="0.1" value="'+S.height+'"></label><label>Age<input id="st-age" type="number" inputmode="numeric" value="'+S.age+'"></label><label>Protein a day (g)<input id="st-p" type="number" inputmode="numeric" value="'+S.protein+'"></label></div>'+
     '<p class="hint" style="margin:0">Research supports 1.6–2.2g of protein per kg for building muscle: '+Math.round(kg*1.6)+'–'+Math.round(kg*2.2)+'g at your current weight (Morton et al., 2018).</p>'+
-    '<div class="lbl2">Days you work from home</div><div class="chips">'+['Mon','Tue','Wed','Thu','Fri'].map(function(n,i){return '<button class="pill'+(S.wfh[i]?' on':'')+'" data-act="stwfh" data-i="'+i+'" aria-pressed="'+!!S.wfh[i]+'">'+n+'</button>';}).join('')+'</div>'+
-    '<p class="hint" style="margin:0">On these days there’s no cycle to work, so the calorie target drops by about 200.</p>'+
+    '<div class="lbl2">Days you usually work from home</div><div class="chips">'+['Mon','Tue','Wed','Thu','Fri'].map(function(n,i){return '<button class="pill'+(S.wfh[i]?' on':'')+'" data-act="stwfh" data-i="'+i+'" aria-pressed="'+!!S.wfh[i]+'">'+n+'</button>';}).join('')+'</div>'+
+    '<p class="hint" style="margin:0">On these days there’s no cycle to work, so the calorie target drops by about 200. If a week is different, use the button on the Today page for that day.</p>'+
     '<div class="err" id="st-err"></div><button class="btn primary" data-act="stsave">Save settings</button></div>';
   h+='<h2>Calorie auto-adjust</h2><div class="card"><p class="hint" style="margin:0">Every 2 weeks the app checks your weigh-ins from the last 3–5 weeks. If you’re gaining under 0.25kg a month it adds 150 kcal a day; over 1kg a month it takes 150 off. Rice, pasta, oats and bread portions scale to match.</p>'+
     '<div class="kv"><span>Current adjustment</span><b>'+(F.adj?(F.adj>0?'+':'')+F.adj+' kcal a day':'None yet')+'</b></div>'+
@@ -1135,9 +1136,11 @@ function dayPlan(ds){
 }
 function sett(){var s0=state.settings||{};return {height:+s0.height||177.8,age:+s0.age||26,wfh:Array.isArray(s0.wfh)?s0.wfh:[false,false,false,false,false],protein:+s0.protein||140};}
 function protTarget(){return sett().protein;}
+/* Working from home on a given date: a one-off choice made on the Today page wins, otherwise the usual days from Settings. Weekends never count as a commute. */
+function isWfh(ds){var d=dayIdx(parse(ds));if(d>=5)return true;var o=(state.settings||{}).wfhDays;if(o&&typeof o[ds]==='boolean')return o[ds];return !!sett().wfh[d];}
 function fBurn(ds){
   var S=sett(),kg=bodyKg(),bmr=10*kg+6.25*S.height-5*S.age+5,base=bmr*1.3,d=dayIdx(parse(ds)),t=trainOn(ds),parts=[],burn=base;
-  if(d<5&&!S.wfh[d]){burn+=195;parts.push('cycling to work');}
+  if(!isWfh(ds)){burn+=195;parts.push('cycling to work');}
   if(t.gym){burn+=t.gym==='legs'?280:250;parts.push(SESS[t.gym].name.toLowerCase()+' session');}
   if(t.run){var hv=t.run==='hard'?hardVariant(t.key):'long',hi2=t.run==='hard'?hardInfo(hv,t.key):null;burn+=t.run==='long'?Math.round(LONG_MIN[blockWeek(t.key)]*10.5):hv==='trial'?400:hv==='intervals'?180+50*hi2.reps:180+12.5*hi2.min;parts.push(t.run==='long'?'long run':hi2.title.toLowerCase());}
   extrasOn(ds).forEach(function(x){burn+=x.k;parts.push(x.n.toLowerCase());});
@@ -1566,6 +1569,7 @@ document.addEventListener('click',function(ev){
     shrinkImage(file).then(function(bl){return assetsNS.upload(bl);}).then(function(r){co.photo=r.id;finish();}).catch(function(){b.disabled=false;b.textContent='Save check-in';document.getElementById('ci-err').textContent='The photo didn\u2019t upload. Try again, or remove it and save the measurements.';});
     return;
   }
+  if(act==='wfhtoday'){var wd=iso(todayD()),wo=Object.assign({},state.settings.wfhDays||{});wo[wd]=!isWfh(wd);state.settings.wfhDays=wo;render();save();toast(wo[wd]?'Marked as working from home.':'Marked as cycling to work.');return;}
   if(act==='stwfh'){var S0=sett(),wi=+b.getAttribute('data-i'),wf=S0.wfh.slice();wf[wi]=!wf[wi];state.settings.wfh=wf;render();save();return;}
   if(act==='stsave'){
     var hh=num('st-h'),ag=num('st-age'),pp=num('st-p'),er=document.getElementById('st-err');
