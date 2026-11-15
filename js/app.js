@@ -1219,7 +1219,7 @@ function calDetail(x){
 function calendarHTML(){
   var m=calMonthStart(),y=m.getFullYear(),mo=m.getMonth(),first=parse(FIRST_DAY);
   var atMin=y===first.getFullYear()&&mo===first.getMonth();
-  var gridStart=monday(m),last=new Date(y,mo+1,0),gridEnd=addDays(monday(last),6),today=iso(todayD());
+  var gridStart=monday(atMin?first:m),last=new Date(y,mo+1,0),gridEnd=addDays(monday(last),6),today=iso(todayD());
   var days=[],cells='';
   for(var d=gridStart;d<=gridEnd;d=addDays(d,1)){
     var ds=iso(d),inM=d.getMonth()===mo;
