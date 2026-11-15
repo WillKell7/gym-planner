@@ -3,7 +3,7 @@
 
 /*SCHED-START*/
 var START='2026-11-16';
-var FIRST_DAY='2026-11-15'; /* the day you started using the app: nothing earlier is shown */
+var FIRST_DAY='2026-11-16'; /* the day you started using the app: nothing earlier is shown */
 var SESS={
   upA:{name:'Upper A',kind:'gym',pri:8,def:5,blurb:'Chest, back, shoulders, arms'},
   loA:{name:'Lower A',kind:'gym',pri:9,def:6,blurb:'Quads, hamstrings, calves, core'},
@@ -191,6 +191,7 @@ var tempWeeks={};
 /* The day before a week starts (its Sunday): a gym session you logged that day wins over the one planned. */
 function prevDay(key){
   var pk=iso(addDays(parse(key),-7)),sun=iso(addDays(parse(key),-1)),pw=null;
+  if(sun<FIRST_DAY)return {gym:null,run:null};
   if(pk>=curWeekKey()||state.weeks[pk])pw=state.weeks[pk]||getWeek(pk);
   var p=pw?pw.plan[6]:{gym:null,run:null};
   var lg=state.workouts.filter(function(x){return x.date===sun;}).map(function(x){return x.session;}).pop();
@@ -386,7 +387,7 @@ function restoreDraft(){
 var COMPOUND={'Back extension (45\u00b0)':1,'Bench press':1,'Incline press':1,'Dips':1,'Lat pulldown':1,'Seated row':1,'Single-arm cable row':1,'Squat machine':1,'Bulgarian split squat':1,'Hip thrust':1,'Overhead press':1,'Pull-ups':1};
 var REST={el:null,end:0,iv:null};
 function restEl(){
-  if(!REST.el){REST.el=document.createElement('div');REST.el.className='rest';REST.el.setAttribute('role','timer');
+  if(!REST.el){REST.el=document.createElement('div');REST.el.className='resttimer';REST.el.setAttribute('role','timer');
     REST.el.innerHTML='<span class="rt">Rest <b id="rest-t">0:00</b></span><button data-act="rest" data-v="30">+30s</button><button data-act="rest" data-v="0">Done</button>';
     document.body.appendChild(REST.el);}
   return REST.el;
@@ -437,7 +438,8 @@ function foodAlertsHTML(sim,F,st){
 }
 function renderToday(){
   var F=food(),td=todayD(),ds=iso(td),key=curWeekKey(),w=getWeek(key),d=dayIdx(td),p=w.plan[d],h='';
-  var idx=weekIdx(key),variant=hardVariant(key);
+  var idx=weekIdx(key),variant=hardVariant(key),pre=ds<FIRST_DAY;
+  if(pre)p={gym:null,run:null};
   h+='<div class="tday"><div class="tdate">'+['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][d]+' '+fmtD(td)+'</div><div class="sub">'+(w.pool?'Day 1':idx>=0?'Week '+(idx+1)+' of 12':'Before the plan')+(isDeload(key)?' · lighter week':'')+'</div></div>';
   if(d<5){var wf=isWfh(ds);h+='<div class="chips" style="margin:0 0 12px"><button class="pill'+(wf?' on':'')+'" data-act="wfhtoday" aria-pressed="'+wf+'">'+(wf?'Working from home today ✓':'Working from home today?')+'</button><span class="hint" style="margin:0;align-self:center">'+(wf?'No cycle counted, so today’s calorie target is about 200 lower.':'Cycle to work is counted.')+'</span></div>';}
   /* prompts */
@@ -450,11 +452,12 @@ function renderToday(){
   /* training */
   h+='<h2>Training</h2>';
   var items=[];if(p.run==='hard'){items.push(['run',p.run]);if(p.gym)items.push(['gym',p.gym]);}else{if(p.gym)items.push(['gym',p.gym]);if(p.run)items.push(['run',p.run]);}
-  if(items.length)h+='<div class="days"><section class="day">'+items.map(function(it){return sessHTML(key,d,it[0],it[1],w,variant);}).join('')+'</section></div>';
+  if(pre)h+='<div class="card"><div class="rest">Your plan starts on '+DAYS[dayIdx(parse(FIRST_DAY))]+' '+fmtS(FIRST_DAY)+'. Nothing to do today.</div></div>';
+  else if(items.length)h+='<div class="days"><section class="day">'+items.map(function(it){return sessHTML(key,d,it[0],it[1],w,variant);}).join('')+'</section></div>';
   else h+='<div class="card"><div class="rest">Rest day. Your legs and lungs recover today. 10 minutes of stretching (hamstrings, hip flexors, calves) is a good use of it.</div></div>';
   var ex=extrasOn(ds);
   if(ex.length)h+='<div class="hint" style="margin:8px 0 0">Also today: '+ex.map(function(e){return esc(e.n)+' (~'+e.k+' kcal)';}).join(', ')+'.</div>';
-  if(!w.pool||d>=(w.from||0))h+=homeCardHTML(homeFor(ds));
+  if(!pre&&(!w.pool||d>=(w.from||0)))h+=homeCardHTML(homeFor(ds));
   h+='<div class="tbtns"><button class="btn sm" data-act="go" data-tab="log" data-k="other">+ Log something else</button><button class="btn sm ghost" data-act="go" data-tab="plan">Full week</button></div>';
   /* food */
   h+='<h2>Food</h2>';
@@ -652,7 +655,7 @@ function restoreSummary(){var r=RESTORE;return '<div class="notice">Backup from 
 
 /* Plan version 2 added a third run (easy, Thursday by default). Weeks already planned are re-planned once, keeping anything ticked off and days already gone. */
 function upgradePlan(){
-  var v=state.settings.planV||1;if(v>=4)return false;
+  var v=state.settings.planV||1;if(v>=5)return false;
   var c=curWeekKey();
   /* v2 added the easy run; v3 made back-to-back overlapping gym days much less likely, so weeks not started yet are re-sorted */
   if(v<3)Object.keys(state.weeks).sort().forEach(function(k){var w=state.weeks[k];if(w.pool)return;
@@ -660,7 +663,7 @@ function upgradePlan(){
     else if(k>c&&!Object.keys(w.done||{}).length)replan(k);});
   /* v4 swapped Push / Pull / Legs / Shoulders & arms for Upper A, Lower A, Upper B, Lower B. From this week on, old sessions
      not ticked off yet become their new ones and the week is re-sorted; anything already done stays as it was. */
-  Object.keys(state.weeks).sort().forEach(function(k){
+  if(v<4)Object.keys(state.weeks).sort().forEach(function(k){
     if(k<c)return;
     var w=state.weeks[k],done=w.done||{},m=function(id){return id&&OLD_TO_NEW[id]&&!done[id]?OLD_TO_NEW[id]:id;};
     w.plan.forEach(function(p){p.gym=m(p.gym);});
@@ -668,7 +671,15 @@ function upgradePlan(){
     if(k>c&&!w.pool&&!Object.keys(done).length)replan(k);
     else if(k===c&&!w.pool)replan(k);
   });
-  state.settings.planV=4;return true;
+  /* v5: the plan starts on Mon 16 Nov 2026 rather than Sun 15 Nov. The day-1 week before it is dropped if nothing in it was
+     ticked off, and the first week is re-sorted without that Sunday's session. */
+  if(v<5){
+    var w0=state.weeks['2026-11-09'];
+    if(w0&&w0.pool&&!Object.keys(w0.done||{}).length)delete state.weeks['2026-11-09'];
+    var w1=state.weeks['2026-11-16'];
+    if(w1&&c<='2026-11-16'&&!Object.keys(w1.done||{}).length)replan('2026-11-16');
+  }
+  state.settings.planV=5;return true;
 }
 /* A saved week that hasn't started yet is re-sorted whenever the Sunday before it changes
    (a different session planned or logged there), so it never opens with a session that works the same muscles. */
@@ -1223,7 +1234,7 @@ function slotsFor(plan){return FSLOTS.filter(function(s){return plan[s[0]];});}
 var DINNERS=['d_honeychicken','d_salmon','d_pasta','d_beefbowl','d_bolognese','d_fajita','d_friedrice'];
 function fTotals(ing){var k=0,p=0;ing.forEach(function(x){var it=FI[x[0]];var f=it.u==='each'?x[1]:x[1]/100;k+=it.k*f;p+=it.p*f;});return {k:k,p:p};}
 ['prep_burrito','prep_bowl'].forEach(function(r){var R=FR[r],t=fTotals(R.ing);FI[R.makes[0]].k=t.k/R.makes[1];FI[R.makes[0]].p=t.p/R.makes[1];});
-function trainOn(ds){var key=iso(monday(parse(ds)));if(key<'2026-11-09')return {gym:null,run:null,key:key};var w=getWeek(key),p=w.plan[dayIdx(parse(ds))];return {gym:p.gym,run:p.run,key:key};}
+function trainOn(ds){var key=iso(monday(parse(ds)));if(ds<FIRST_DAY)return {gym:null,run:null,key:key};var w=getWeek(key),p=w.plan[dayIdx(parse(ds))];return {gym:p.gym,run:p.run,key:key};}
 function dayPlan(ds){
   var d=dayIdx(parse(ds)),t=trainOn(ds),sw=(state.food&&state.food.swaps)||{},p={bfast:'porridge',am:'banana_nuts',lunch:d<5?'freezer_lunch':'eggs_beans',pm:'pm_shake',fuel:t.run?'fuel':null,dinner:(sw[ds]&&FR[sw[ds]])?sw[ds]:DINNERS[d],dropped:[]};
   var tgt=fBurn(ds).target,tot=0,pro=0,tp=protTarget();
