@@ -252,7 +252,7 @@ function clean(o){return JSON.parse(JSON.stringify(o));}
 function canon(v){if(v===null||typeof v!=='object')return JSON.stringify(v)+'';if(Array.isArray(v))return '['+v.map(canon).join(',')+']';return '{'+Object.keys(v).sort().filter(function(k){return v[k]!==undefined;}).map(function(k){return JSON.stringify(k)+':'+canon(v[k]);}).join(',')+'}';}
 /* DATA_V: bump this whenever a release changes how saved data is shaped or automatically rewritten (anything run from render()).
    A copy of the app that is older than the data it receives stops saving and reloads itself, so it can't undo the newer copy's work. */
-var DATA_V=1,outdated=false,pendingLS=null;
+var DATA_V=2,outdated=false,pendingLS=null;
 function dataVOf(c){return +((c&&c.core&&c.core.settings&&c.core.settings.dataV)||0);}
 function goOutdated(v){
   outdated=true;mode='ro';
@@ -328,7 +328,7 @@ async function initPersistence(){
 function goOffline(){clearTimeout(loadTimer);mode='local';dbReady=false;var ls=LS.get('tp-state');if(ls&&ls.v)state=normalize(ls);tempWeeks={};render();}
 function applyRemote(){if(pendingRemote){Object.keys(pendingLS||{}).forEach(function(k){lastSaved[k]=pendingLS[k];});state=pendingRemote;pendingRemote=null;pendingLS=null;tempWeeks={};render();}}
 function save(){
-  dirty=true;saveUi();LS.set('tp-state',state);
+  DCH=null;dirty=true;saveUi();LS.set('tp-state',state);
   setStatus('saving');
   clearTimeout(saveTimer);saveTimer=setTimeout(flush,500);
 }
@@ -507,7 +507,7 @@ function renderToday(){
     h+='<div class="card">'+nutRow(tot.eatK,tot.eatP,bn.target,protTarget())+'<div class="tmeals">'+slotsFor(plan).map(function(s){
       var rid=plan[s[0]],m=mk[s[0]],stt=m?m.s:'',n=mealNut(rid,st),R=FR[rid];
       var name=rid==='freezer_lunch'?(lunchPick(st)==='bowl'?'Burrito bowl and an apple':'Freezer burrito and an apple'):R.n;
-      if(s[0]==='dinner'&&(F.swaps||{})[ds])name=FR[F.swaps[ds]].n;
+      if(s[0]==='dinner'){var di=dinnerInfo(ds);if(di.left)name+=' (leftovers)';else if(di.cook.mode==='two'&&!di.cook.off)name+=' (cook 2)';}
       return '<div class="tmeal'+(stt==='x'||stt==='o'?' skipped':stt==='y'?' eaten':'')+'"><div class="tm-main"><span class="mslot">'+s[1]+'</span><span class="tm-name">'+esc(stt==='o'?'Ate something else ('+m.k+' kcal)':name)+'</span></div>'+
         '<button class="tm-b'+(stt==='y'?' on-y':'')+'" data-act="fmark" data-d="'+ds+'" data-s="'+s[0]+'" data-v="y" aria-label="Had '+esc(s[1])+'">✓</button><button class="tm-b'+(stt==='x'?' on-x':'')+'" data-act="fmark" data-d="'+ds+'" data-s="'+s[0]+'" data-v="x" aria-label="Skipped '+esc(s[1])+'">✕</button></div>';
     }).join('')+'</div><button class="linkbtn" data-act="go" data-tab="food" data-v="today">Recipes, swaps and more</button></div>';
@@ -733,6 +733,7 @@ function refitWeeks(){
   return ch;
 }
 function render(){
+  DCH=null;
   /* automatic tidy-ups pause while an out-of-date copy of the app is fighting over the data, so the two don't rewrite each other forever */
   if(mode!=='pending'&&mode!=='ro'&&!outdated&&!(window.Sync&&Sync.oldCopyAbout&&Sync.oldCopyAbout())&&(stampV()|upgradePlan()|refitWeeks()|stravaImport()|autoAdjust()|syncDinners()))save();
   var root=document.getElementById('root');
@@ -1369,8 +1370,8 @@ var FR={
   fuel:{n:'Toast with honey',t:'2 min',ing:[['bread',2],['honey',20]],steps:['Toast 2 slices from frozen and drizzle with honey.','Have it 1–2 hours before your run. Quick carbs so you’re fuelled for the hard bits.']},
   d_honeychicken:{n:'Honey-soy chicken stir-fry with rice',t:'20 min',ing:[['chicken',200],['pepper',1],['broccoli',150],['garlic',1],['soy',20],['honey',15],['oil',10],['rice',90]],steps:['Start the rice first: rinse 90g rice and boil it in plenty of salted water for 10\u201312 min, then drain.','Mix the sauce: 2 tbsp soy sauce, 1 tbsp honey, 1 crushed garlic clove and 2 tbsp water.','Cut the defrosted chicken into bite-sized pieces. Slice the pepper and cut the broccoli into small florets.','Heat the oil in a wok or large frying pan on high. Stir-fry the chicken for 5–6 min until golden.','Add the pepper, broccoli and a splash of water. Stir-fry 3–4 min until just tender.','Pour in the sauce and let it bubble for about 2 min until it’s sticky and coats the chicken. Check there’s no pink in the middle.','Serve over the rice.'],src:['BBC Good Food: honey chicken','https://bbcgoodfoodme.com/recipes/honey-chicken']},
   d_salmon:{n:'Honey-garlic salmon with rice & broccoli',t:'20 min',ing:[['salmon',2],['garlic',1],['honey',20],['soy',15],['oil',5],['broccoli',150],['rice',90]],steps:['Start the rice first: rinse 90g rice and boil it in plenty of salted water for 10\u201312 min, then drain.','Use salmon defrosted overnight in the fridge. Pat it dry with kitchen paper and season.','Mix 1 tbsp honey, 1 tbsp soy sauce and 1 crushed garlic clove.','Heat the oil in a non-stick pan on medium-high. Cook the salmon 3–4 min until golden, flip, and cook 2 min more.','Turn the heat down, pour in the sauce and let it bubble 1–2 min, spooning it over the salmon until sticky. Watch it, as honey burns fast.','Meanwhile, microwave the broccoli in a covered bowl with 2 tbsp water for 3\u20134 min. Serve with the rice.'],src:['RecipeTin Eats: honey garlic salmon','https://www.recipetineats.com/honey-garlic-salmon/']},
-  d_pasta:{n:'Chicken, tomato & spinach pasta',t:'20 min',ing:[['chicken',200],['onion',0.5],['garlic',2],['tomatoes',1],['spinach',100],['pasta',100],['cheddar',20],['oil',10]],steps:['Boil the pasta in salted water for 10–12 min (check the pack).','Meanwhile, dice the chicken and half the onion, and crush 2 garlic cloves.','Heat the oil in a frying pan. Brown the chicken for 5 min, add the onion for 3 min, then the garlic for 1 min.','Tip in the chopped tomatoes, season, and simmer 5 min until thickened.','Stir in the spinach until it wilts, about 1–2 min.','Drain the pasta, keeping a splash of the water. Toss it through the sauce with that water and top with the cheddar.'],tip:'Wrap the other half of the onion and keep it in the fridge for the bolognese later in the week.',src:['Jo Cooks: tomato spinach chicken pasta','https://www.jocooks.com/recipes/tomato-spinach-chicken-pasta/']},
-  d_beefbowl:{n:'Korean-style beef & rice bowl',t:'20 min',ing:[['mince',250],['garlic',2],['soy',25],['honey',15],['oil',5],['spinach',100],['rice',90]],steps:['Start the rice first: rinse 90g rice and boil it in plenty of salted water for 10\u201312 min, then drain.','Mix 2\u00bd tbsp soy sauce, 1 tbsp honey and 2 crushed garlic cloves.','Heat the oil in a frying pan on high. Add half the pack of mince (250g), break it up, and cook 6–8 min until browned and any liquid has gone.','Pour in the sauce and cook 1–2 min until it coats the beef.','Push the beef to one side, add the spinach and stir until it wilts, about 1 min.','Spoon the beef and spinach over the rice.'],tip:'Put the rest of the mince back in the fridge, sealed, for tomorrow’s bolognese.',src:['Little Sunny Kitchen: Korean beef bowl','https://littlesunnykitchen.com/korean-beef-bowl/']},
+  d_pasta:{n:'Chicken, tomato & spinach pasta',t:'20 min',ing:[['chicken',200],['onion',0.5],['garlic',2],['tomatoes',1],['spinach',100],['pasta',100],['cheddar',20],['oil',10]],steps:['Boil the pasta in salted water for 10–12 min (check the pack).','Meanwhile, dice the chicken and half the onion, and crush 2 garlic cloves.','Heat the oil in a frying pan. Brown the chicken for 5 min, add the onion for 3 min, then the garlic for 1 min.','Tip in the chopped tomatoes, season, and simmer 5 min until thickened.','Stir in the spinach until it wilts, about 1–2 min.','Drain the pasta, keeping a splash of the water. Toss it through the sauce with that water and top with the cheddar.'],src:['Jo Cooks: tomato spinach chicken pasta','https://www.jocooks.com/recipes/tomato-spinach-chicken-pasta/']},
+  d_beefbowl:{n:'Korean-style beef & rice bowl',t:'20 min',ing:[['mince',250],['garlic',2],['soy',25],['honey',15],['oil',5],['spinach',100],['rice',90]],steps:['Start the rice first: rinse 90g rice and boil it in plenty of salted water for 10\u201312 min, then drain.','Mix 2\u00bd tbsp soy sauce, 1 tbsp honey and 2 crushed garlic cloves.','Heat the oil in a frying pan on high. Add half the pack of mince (250g), break it up, and cook 6–8 min until browned and any liquid has gone.','Pour in the sauce and cook 1–2 min until it coats the beef.','Push the beef to one side, add the spinach and stir until it wilts, about 1 min.','Spoon the beef and spinach over the rice.'],src:['Little Sunny Kitchen: Korean beef bowl','https://littlesunnykitchen.com/korean-beef-bowl/']},
   d_bolognese:{n:'Quick spaghetti bolognese',t:'25 min',ing:[['mince',250],['onion',1],['garlic',2],['tomatoes',1],['pasta',100],['cheddar',20],['oil',5]],steps:['Finely chop the onion and crush 2 garlic cloves.','Heat the oil in a saucepan and soften the onion for 5 min. Add the garlic for 1 min.','Turn up the heat, add the mince and brown it for 5 min, breaking it up.','Add the chopped tomatoes and a quarter of the tin filled with water. Season, and simmer 10–15 min until thick.','Meanwhile, cook the pasta for 10–12 min. Drain, top with the sauce and the cheddar.'],src:['Easy Peasy Foodie: easy spaghetti bolognese','https://www.easypeasyfoodie.com/easy-peasy-spaghetti-bolognese/']},
   d_fajita:{n:'Chicken fajitas',t:'20 min',ing:[['chicken',200],['pepper',1],['onion',1],['fajita',0.5],['oil',10],['tortilla',2],['cheddar',20]],steps:['Slice the chicken into strips, and the pepper and onion thinly.','Toss the chicken with half the fajita sachet and a teaspoon of the oil.','Heat the rest of the oil in a large frying pan on high. Cook the onion and pepper for 4 min until they start to char, then push them to the side.','Add the chicken and cook 5–6 min until cooked through.','Warm the wraps for 20 seconds in the microwave. Fill with the chicken and veg, and top with cheese.'],src:['Goodto: Hairy Bikers’ chicken fajitas','https://www.goodtoknow.co.uk/recipes/chicken-fajitas']},
   d_friedrice:{n:'Salmon egg-fried rice',t:'15 min',ing:[['salmon',1],['eggs',2],['rice',90],['pepper',1],['garlic',1],['soy',15],['oil',10]],steps:['Cook the 90g rice ahead (the night before, or at least 30 min before) and spread it out to cool. Fried rice works best with cold rice. Get cooked rice into the fridge within an hour and use it within a day.','Use a salmon fillet defrosted overnight. Pat dry, season, and fry in half the oil for 3–4 min each side. Break into chunks and set aside.','Dice the pepper and crush the garlic. Heat the rest of the oil in the same pan and cook the pepper for 3 min, then the garlic for 30 sec.','Push it all to the side, crack in the 2 eggs and scramble until just set.','Add the cold rice, breaking up any clumps, with the soy sauce. Stir-fry 3\u20134 min until piping hot.','Gently fold the salmon back in and serve.'],src:['Just One Cookbook: salmon fried rice','https://www.justonecookbook.com/salmon-fried-rice/']},
@@ -1383,37 +1384,66 @@ var DINNERS=['d_honeychicken','d_salmon','d_pasta','d_beefbowl','d_bolognese','d
 function fTotals(ing){var k=0,p=0;ing.forEach(function(x){var it=FI[x[0]];var f=it.u==='each'?x[1]:x[1]/100;k+=it.k*f;p+=it.p*f;});return {k:k,p:p};}
 ['prep_burrito','prep_bowl'].forEach(function(r){var R=FR[r],t=fTotals(R.ing);FI[R.makes[0]].k=t.k/R.makes[1];FI[R.makes[0]].p=t.p/R.makes[1];});
 function trainOn(ds){var key=iso(monday(parse(ds)));if(ds<FIRST_DAY)return {gym:null,run:null,key:key};var w=getWeek(key),p=w.plan[dayIdx(parse(ds))];return {gym:p.gym,run:p.run,key:key};}
-/* Dinners for a week, biggest on the hardest days. Days up to tomorrow keep what they were last shown (you may have shopped
-   or defrosted for them); later days re-sort when training moves. The beef bowl goes the day before the bolognese so they share one pack of mince. */
-var DKCAL={},DORD_MEMO={};DINNERS.forEach(function(r){DKCAL[r]=fTotals(FR[r].ing).k;});
-function weekSig(key){var mon=parse(key),a=[];for(var i=0;i<7;i++){var ds=iso(addDays(mon,i)),t=trainOn(ds);a.push((t.gym||'-')+'/'+(t.run||'-')+'/'+(isWfh(ds)?1:0));}return a.join(',');}
-function weekDinners(key){
-  var F=state.food||{},saved=(F.dord||{})[key],sig=weekSig(key);
-  if(saved&&saved.sig===sig&&saved.o&&saved.o.length===7)return saved.o;
-  var mon=parse(key),lockTo=iso(addDays(todayD(),1)),mk=key+'|'+sig+'|'+lockTo+'|'+(saved&&saved.o?saved.o.join():'');
-  if(DORD_MEMO[mk])return DORD_MEMO[mk];
-  var load=[],o=[],i;
-  for(i=0;i<7;i++){var ds=iso(addDays(mon,i)),b=fBurn(ds),x=0;extrasOn(ds).forEach(function(e){x+=e.k;});load.push(b.burn-x);
-    o.push(saved&&saved.o&&ds<=lockTo&&DKCAL[saved.o[i]]!=null?saved.o[i]:null);}
-  var freeD=[],freeR=DINNERS.filter(function(r){return o.indexOf(r)<0;});for(i=0;i<7;i++)if(!o[i])freeD.push(i);
-  var best=null,bs=-Infinity;
-  (function perm(k,left){
-    if(k===freeD.length){var sc=0;for(var j=0;j<7;j++)sc+=load[j]*DKCAL[o[j]];if(o.indexOf('d_bolognese')!==o.indexOf('d_beefbowl')+1)sc-=1e9;if(sc>bs){bs=sc;best=o.slice();}return;}
-    for(var n=0;n<left.length;n++){o[freeD[k]]=left[n];perm(k+1,left.slice(0,n).concat(left.slice(n+1)));}
-    o[freeD[k]]=null;
-  })(0,freeR);
-  return (DORD_MEMO[mk]=best||DINNERS.slice());
+/* ---------- dinners: cook 2 portions, have the second tomorrow ----------
+   A cook day makes 2 portions by default and the next day's dinner is the leftover, so you cook about every other day.
+   On a cook day you can pick "just 1" or "2, girlfriend has one" (food.dmode[date] = 'one' | 'gf'): no leftover, so the next
+   day cooks. A cook day you skip or eat out cooks nothing, so the next day cooks instead. A leftover you skip moves to the
+   next day, up to 2 days after cooking. If the 2 dinners after a cook day are both marked as not happening, it cooks 1.
+   Recipes come round in turn; within each week the biggest go on the cook days with the most training across the days
+   they feed. Cook days up to tomorrow keep their recipe (food.dcook), so shopping and defrosting stay right. */
+var DKCAL={};DINNERS.forEach(function(r){DKCAL[r]=fTotals(FR[r].ing).k;});
+var DCH=null;
+function dinnerOff(F,ds){var m=(F.marks[ds]||{}).dinner;return !!(m&&(m.s==='x'||m.s==='o'));}
+function dayLoad(ds){var b=fBurn(ds),x=0;extrasOn(ds).forEach(function(e){x+=e.k;});return b.burn-x;}
+function autoMode(F,ds){return dinnerOff(F,iso(addDays(parse(ds),1)))&&dinnerOff(F,iso(addDays(parse(ds),2)))?'one':'two';}
+function cookMode(F,ds){var m=(F.dmode||{})[ds];if(m==='one'||m==='gf'||m==='two')return m;if(F.serves&&F.serves[ds]===2)return 'gf';return autoMode(F,ds);}
+function buildChain(to){
+  var F=food(),days={},cooks=[],pend=null,lockTo=iso(addDays(todayD(),1)),dc=F.dcook||{},sw=F.swaps||{},d,ds;
+  for(d=parse(F.start);iso(d)<=to;d=addDays(d,1)){
+    ds=iso(d);var off=dinnerOff(F,ds);
+    if(pend&&(d-parse(pend.ds))/864e5<=2){days[ds]={left:true,cook:pend};if(!off){pend.eatenOn=ds;pend=null;}continue;}
+    pend=null;
+    var c={ds:ds,mode:cookMode(F,ds),off:off,load:dayLoad(ds),base:null,rid:null};
+    days[ds]={left:false,cook:c};cooks.push(c);
+    if(!off&&c.mode==='two')pend=c;
+  }
+  Object.keys(days).forEach(function(k){var x=days[k];if(x.left&&x.cook.eatenOn===k)x.cook.load+=dayLoad(k);});
+  var byWk={},ptr=0;
+  cooks.forEach(function(c){var k=iso(monday(parse(c.ds)));(byWk[k]=byWk[k]||[]).push(c);});
+  Object.keys(byWk).sort().forEach(function(k){
+    var cs=byWk[k],used={};
+    cs.forEach(function(c){if(c.ds<=lockTo&&DKCAL[dc[c.ds]]!=null){c.base=dc[c.ds];used[c.base]=1;}});
+    /* days you won't eat in don't use up a recipe: they just show the next one in line */
+    var free=cs.filter(function(c){return !c.base&&!c.off;}),pool=[],eat=cs.filter(function(c){return !c.off;}).length;
+    for(var n=0;n<DINNERS.length*2&&pool.length<free.length+1;n++){var r=DINNERS[(ptr+n)%DINNERS.length];if(!used[r]&&pool.indexOf(r)<0)pool.push(r);}
+    ptr=(ptr+eat)%DINNERS.length;
+    var spare=pool.length>free.length?pool.pop():DINNERS[ptr];
+    free.sort(function(a,b){return b.load-a.load;});pool.sort(function(a,b){return DKCAL[b]-DKCAL[a];});
+    free.forEach(function(c,n){c.base=pool[n]||DINNERS[n%DINNERS.length];});
+    cs.forEach(function(c){if(!c.base)c.base=spare;});
+  });
+  cooks.forEach(function(c){c.rid=(sw[c.ds]&&FR[sw[c.ds]])?sw[c.ds]:c.base;});
+  return {to:to,days:days};
 }
-function baseDinner(ds){return weekDinners(iso(monday(parse(ds))))[dayIdx(parse(ds))];}
-/* keep this week's and next week's dinner order saved, so days already shown stay put */
+function dinnerInfo(ds){
+  var F=food();
+  if(ds<F.start){var r0=DINNERS[dayIdx(parse(ds))];return {left:false,cook:{ds:ds,mode:'one',base:r0,rid:r0}};}
+  if(!DCH||DCH.to<ds){var h=iso(addDays(todayD(),60));DCH=buildChain(ds>h?ds:h);}
+  return DCH.days[ds];
+}
+function baseDinner(ds){return dinnerInfo(ds).cook.base;}
+/* remember the recipe for cook days up to tomorrow, so they don't change under you */
 function syncDinners(){
-  var F=food(),ch=false,k0=curWeekKey();F.dord=F.dord||{};
-  [k0,iso(addDays(parse(k0),7))].forEach(function(k){var sig=weekSig(k),sv=F.dord[k];if(sv&&sv.sig===sig)return;var o=weekDinners(k);F.dord[k]={sig:sig,o:o.slice()};ch=true;});
-  Object.keys(F.dord).forEach(function(k){if(k<iso(addDays(parse(k0),-28))){delete F.dord[k];ch=true;}});
+  var F=food(),ch=false,today=todayD(),tom=iso(addDays(today,1)),old=iso(addDays(today,-28));
+  if(F.dord){delete F.dord;ch=true;}
+  if(iso(today)<F.start&&tom<F.start)return ch;
+  F.dcook=F.dcook||{};
+  for(var d=addDays(today,-7);iso(d)<=tom;d=addDays(d,1)){var ds=iso(d);if(ds<F.start)continue;var x=dinnerInfo(ds);if(!x.left&&F.dcook[ds]!==x.cook.base){F.dcook[ds]=x.cook.base;ch=true;}}
+  Object.keys(F.dcook).forEach(function(k){if(k<old){delete F.dcook[k];ch=true;}});
   return ch;
 }
 function dayPlan(ds){
-  var d=dayIdx(parse(ds)),t=trainOn(ds),sw=(state.food&&state.food.swaps)||{},p={bfast:'porridge',am:'banana_nuts',lunch:d<5?'freezer_lunch':'eggs_beans',pm:'pm_yoghurt',fuel:t.run?'fuel':null,dinner:(sw[ds]&&FR[sw[ds]])?sw[ds]:baseDinner(ds),dropped:[]};
+  var d=dayIdx(parse(ds)),t=trainOn(ds),sw=(state.food&&state.food.swaps)||{},p={bfast:'porridge',am:'banana_nuts',lunch:d<5?'freezer_lunch':'eggs_beans',pm:'pm_yoghurt',fuel:t.run?'fuel':null,dinner:dinnerInfo(ds).cook.rid,dropped:[]};
   var tgt=fBurn(ds).target,tot=0,pro=0,tp=protTarget();
   FSLOTS.forEach(function(s){if(p[s[0]]){var nn=mealNut(p[s[0]],{burrito:1});tot+=nn.k;pro+=nn.p;}});
   ['am','pm'].forEach(function(sl){var nn=mealNut(p[sl],{burrito:1});if(tot-nn.k>=tgt-100&&pro-nn.p>=tp){p.dropped.push(sl);tot-=nn.k;pro-=nn.p;p[sl]=null;}});
@@ -1447,8 +1477,9 @@ function mealNut(rid,st){
   if(rid==='freezer_lunch'){var w=lunchPick(st||{})||'burrito';return fTotals([[w,1],['apple',1]]);}
   return fTotals(mealIng(rid,st));
 }
-function servesFor(ds,slot){var F=state.food||{};return slot==='dinner'&&F.serves&&F.serves[ds]?F.serves[ds]:1;}
-function mealIngDay(ds,slot,rid,st){var n=servesFor(ds,slot),ing=mealIng(rid,st);return n===1?ing:ing.map(function(x){return [x[0],x[1]*n];});}
+/* portions of a meal cooked that day: dinner is 2 on a cook day (1 if you chose just 1) and 0 on a leftover day */
+function servesFor(ds,slot){if(slot!=='dinner')return 1;var x=dinnerInfo(ds);return x.left?0:x.cook.mode==='one'?1:2;}
+function mealIngDay(ds,slot,rid,st){var n=servesFor(ds,slot),ing=mealIng(rid,st);return n===1?ing:n===0?[]:ing.map(function(x){return [x[0],x[1]*n];});}
 function dayTotals(ds,plan,mk,st,mode){
   var F=food(),r={eatK:0,eatP:0,planK:0,planP:0};
   slotsFor(plan).forEach(function(s){var m=mk[s[0]];
@@ -1609,7 +1640,7 @@ function weightAdvice(){
   if(perMonth>GAIN_MAX)return 'Gaining about '+(Math.round(perMonth*10)/10)+'kg a month, faster than needed.';
   return 'Gaining about '+(Math.round(perMonth*10)/10)+'kg a month. That’s right on target.';
 }
-function plan0dinner(ds){var sw=(food().swaps||{})[ds];return sw||baseDinner(ds);}
+function plan0dinner(ds){return dinnerInfo(ds).cook.rid;}
 function adjNote(){var F=food();if(!F.adj)return ' Targets adjust themselves every 2 weeks once you have 3 weeks of weigh-ins.';var l=(F.adjLog||[])[F.adjLog.length-1];return ' <b>Auto-adjusted '+(F.adj>0?'+':'')+F.adj+' kcal a day</b>'+(l?' (last change '+fmtS(l.d)+': '+l.why+')':'')+'. Rice, pasta, oats and bread portions are scaled \u00d7'+(F.carb||1)+' to match.';}
 var XPRESETS=[['Light meal',550,30],['Normal meal',850,40],['Big meal or takeaway',1300,45],['Snack',250,8],['Pint of beer',200,2]];
 function extraForm(ds,slot){
@@ -1620,14 +1651,17 @@ function extraForm(ds,slot){
 function recipeExtra(R){return (R.tip?'<p class="rtip">'+R.tip+'</p>':'')+(R.src?'<p class="rsrc">Based on <a href="'+R.src[1]+'" target="_blank" rel="noopener">'+esc(R.src[0])+'</a>. Season with salt and pepper to taste.</p>':'<p class="rsrc">Season with salt and pepper to taste.</p>');}
 function mealHTML(ds,slot,label,rid,mk,mode,st){
   var R=FR[rid],nut=mealNut(rid,st),m=mk[slot],state_=m?m.s:(mode==='past'?'y':''),ingL=mealIngDay(ds,slot,rid,st);
-  var name=R.n;
+  var name=R.n,di=slot==='dinner'?dinnerInfo(ds):null,left=di&&di.left;
   if(rid==='freezer_lunch'){var w=lunchPick(st);name=w==='bowl'?'Burrito bowl and an apple':w==='burrito'?'Freezer burrito and an apple':'Freezer lunch and an apple';}
   var ok='f-'+ds+'-'+slot;
   var h='<div class="meal'+(state_==='x'?' skipped':state_==='y'?' eaten':'')+'">'+
     '<div class="mhead"><span class="mslot">'+label+'</span><span class="num">'+Math.round(nut.k)+' kcal · '+Math.round(nut.p)+'g protein</span></div>'+
+    (left?'<details data-ok="'+ok+'"'+(openDetails[ok]?' open':'')+'><summary class="mname">'+esc(name)+'<small> leftovers, no cooking</small></summary>'+
+      '<p class="rtip">From '+DAYS[dayIdx(parse(di.cook.ds))]+'\u2019s cook. Microwave it covered for 3\u20134 minutes, stirring halfway, until it\u2019s piping hot all the way through. Rice and pasta only get reheated once.'+(rid==='d_fajita'?' Warm the wraps for 20 seconds and fill them after the filling is hot.':'')+'</p></details>':
     '<details data-ok="'+ok+'"'+(openDetails[ok]?' open':'')+'><summary class="mname">'+esc(name)+'<small> '+R.t+'</small></summary>'+
+    (di?'<p class="rtip">'+(di.cook.mode==='one'?'Cooking 1 portion, so you cook again tomorrow.':di.cook.mode==='gf'?'Cooking 2 portions: one for you and one for your girlfriend. No leftovers, so you cook again tomorrow.':'Cooking 2 portions: have one tonight and box the other for tomorrow. Let it cool and get it in the fridge within an hour.')+(di.cook.mode!=='one'?' The amounts below are for 2; the steps are written for 1, so double everything.':'')+'</p>':'')+
     '<ul class="ing">'+ingL.map(function(x){return '<li><span>'+FI[x[0]].n.replace(/ \((frozen|keep frozen|made by you)\)/,'')+'</span><span class="num">'+fmtQ(x[0],x[1])+'</span></li>';}).join('')+'</ul>'+
-    '<ol class="steps">'+R.steps.map(function(s){return '<li>'+s+'</li>';}).join('')+'</ol>'+recipeExtra(R)+'</details>';
+    '<ol class="steps">'+R.steps.map(function(s){return '<li>'+s+'</li>';}).join('')+'</ol>'+recipeExtra(R)+'</details>');
   if(state_==='o')h+='<div class="hint" style="margin:0">Ate something else: about '+m.k+' kcal, '+m.p+'g protein. <button class="linkbtn" data-act="fmark" data-d="'+ds+'" data-s="'+slot+'" data-v="o">Undo</button></div>';
   else if(mode==='future'){
     h+='<div class="mact"><button class="mbtn'+(state_==='x'?' on-x':'')+'" data-act="fmark" data-d="'+ds+'" data-s="'+slot+'" data-v="x">'+(state_==='x'?'Skipping (undo)':'Won\u2019t have it')+'</button></div>';
@@ -1637,10 +1671,12 @@ function mealHTML(ds,slot,label,rid,mk,mode,st){
       '<button class="mbtn" data-act="fxopen" data-d="'+ds+'" data-s="'+slot+'">Ate something else</button></div>';
   }
   if(ui.fxOpen===ds+'|'+slot)h+=extraForm(ds,slot);
-  if(slot==='dinner'&&state_!=='o'){
-    var sv=servesFor(ds,'dinner'),cur=plan0dinner(ds);
-    h+='<div class="mact mopts"><label class="sel">Swap for<select data-swap="'+ds+'">'+DINNERS.map(function(r){return '<option value="'+r+'"'+(r===cur?' selected':'')+'>'+esc(FR[r].n)+'</option>';}).join('')+'</select></label>'+
-      '<button class="mbtn'+(sv===2?' on-y':'')+'" data-act="fserves" data-d="'+ds+'">'+(sv===2?'Cooking for 2 \u2713':'Cooking for 2?')+'</button></div>';
+  if(left){
+    if(state_!=='y'&&mode!=='past')h+='<div class="hint" style="margin:6px 0 0">Not having it? Mark it and the leftover moves to the next day. Cooked food keeps 2 days in the fridge.</div>';
+  }else if(slot==='dinner'&&state_!=='o'){
+    var cur=plan0dinner(ds),cm=di.cook.mode;
+    h+='<div class="mact mopts"><label class="sel">Swap for<select data-swap="'+ds+'">'+DINNERS.map(function(r){return '<option value="'+r+'"'+(r===cur?' selected':'')+'>'+esc(FR[r].n)+'</option>';}).join('')+'</select></label></div>'+
+      '<div class="chips" role="group" aria-label="How many portions">'+[['two','2 portions, leftovers tomorrow'],['one','Just 1'],['gf','2, girlfriend has one']].map(function(x){return '<button class="pill'+(cm===x[0]?' on':'')+'" data-act="fdmode" data-d="'+ds+'" data-v="'+x[0]+'" aria-pressed="'+(cm===x[0])+'">'+x[1]+'</button>';}).join('')+'</div>';
   }
   return h+'</div>';
 }
@@ -1677,9 +1713,9 @@ function renderFoodWeek(){
   for(var d=0;d<7;d++){
     var ds=iso(addDays(mon,d)),plan=dayPlan(ds),mk=F.marks[ds]||{},k=0,p=0,sk=0;
     slotsFor(plan).forEach(function(s){var m=mk[s[0]];if(m&&m.s==='o'){k+=m.k||0;p+=m.p||0;return;}if(m&&m.s==='x'){sk++;return;}var n=mealNut(plan[s[0]],{burrito:1});k+=n.k;p+=n.p;});
-    h+='<button class="fday'+(ds===today?' today':'')+(ds<F.start?' past':'')+'" data-act="fopen" data-d="'+ds+'"><span class="dname">'+DAYS[d]+'</span><span class="fdmain"><b>'+esc(FR[plan.dinner].n)+'</b><span>'+(plan.lunch==='freezer_lunch'?'Freezer lunch':esc(FR[plan.lunch].n))+(sk?' · '+sk+' skipped':'')+'</span></span><span class="num">'+Math.round(k).toLocaleString('en-GB')+' / '+fBurn(ds).target.toLocaleString('en-GB')+'<br>'+Math.round(p)+'g protein</span></button>';
+    h+='<button class="fday'+(ds===today?' today':'')+(ds<F.start?' past':'')+'" data-act="fopen" data-d="'+ds+'"><span class="dname">'+DAYS[d]+'</span><span class="fdmain"><b>'+esc(FR[plan.dinner].n)+'</b><span>'+(function(){var di=dinnerInfo(ds);return di.left?'Leftovers, no cooking \u00b7 ':di.cook.mode==='two'&&!di.cook.off?'Cook 2 portions \u00b7 ':'';})()+(plan.lunch==='freezer_lunch'?'Freezer lunch':esc(FR[plan.lunch].n))+(sk?' · '+sk+' skipped':'')+'</span></span><span class="num">'+Math.round(k).toLocaleString('en-GB')+' / '+fBurn(ds).target.toLocaleString('en-GB')+'<br>'+Math.round(p)+'g protein</span></button>';
   }
-  h+='</div><p class="hint" style="margin-top:12px">The biggest dinners go on your hardest training days. Every day: porridge, banana and nuts, and Greek yoghurt with berries and granola. Run days add toast and honey before the run, and there\u2019s nothing after dinner. Weekday lunches come from the freezer, and Sunday is prep day when you\u2019re running low. Numbers show planned / target kcal.</p>';
+  h+='</div><p class="hint" style="margin-top:12px">You cook 2 dinner portions and have the second the next day, so you cook about every other day. The biggest dinners go on the cook days with the most training. Every day: porridge, banana and nuts, and Greek yoghurt with berries and granola. Run days add toast and honey before the run, and there\u2019s nothing after dinner. Weekday lunches come from the freezer, and Sunday is prep day when you\u2019re running low. Numbers show planned / target kcal.</p>';
   return h;
 }
 function renderShop(){
@@ -1794,6 +1830,7 @@ document.addEventListener('click',function(ev){
     ui.fxOpen=null;render();save();return;
   }
   if(act==='fxdel'){var dd0=b.getAttribute('data-d'),xid=b.getAttribute('data-id');if(F.extras&&F.extras[dd0]){F.extras[dd0]=F.extras[dd0].filter(function(x){return x.id!==xid;});if(!F.extras[dd0].length)delete F.extras[dd0];}render();save();return;}
+  if(act==='fdmode'){var md=b.getAttribute('data-d'),mv=b.getAttribute('data-v');F.dmode=F.dmode||{};if(F.serves)delete F.serves[md];if(mv===autoMode(F,md))delete F.dmode[md];else F.dmode[md]=mv;render();save();return;}
   if(act==='fserves'){var sd=b.getAttribute('data-d');F.serves=F.serves||{};if(F.serves[sd])delete F.serves[sd];else F.serves[sd]=2;render();save();return;}
   if(act==='fprepdone'){F.preps.push({d:iso(todayD()),r:b.getAttribute('data-r'),ts:Date.now()});F.prepNext=b.getAttribute('data-r')==='prep_burrito'?'bowl':'burrito';render();save();toast('Nice. Freezer stocked.');return;}
   if(act==='fprepswap'){F.prepNext=F.prepNext==='bowl'?'burrito':'bowl';render();save();return;}
