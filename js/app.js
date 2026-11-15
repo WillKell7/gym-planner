@@ -8,62 +8,78 @@ var SESS={
   push:{name:'Push',kind:'gym',pri:8,def:0,blurb:'Chest, shoulders, triceps'},
   hard:{name:'Hard run',kind:'run',pri:10,def:1,blurb:''},
   pull:{name:'Pull',kind:'gym',pri:7,def:2,blurb:'Back, rear delts, biceps'},
-  long:{name:'Long easy run',kind:'run',pri:9,def:3,blurb:'45–60 min at chatting pace'},
+  long:{name:'Long easy run',kind:'run',pri:9,def:5,blurb:'45–60 min at chatting pace'},
+  easy:{name:'Easy run',kind:'run',pri:6,def:3,blurb:''},
   legs:{name:'Legs + core',kind:'gym',pri:9,def:5,blurb:'Quads, hamstrings, glutes, calves'},
   arms:{name:'Shoulders & arms',kind:'gym',pri:5,def:6,blurb:'Overhead press, delts, arms'}
 };
-var ORDER=['hard','legs','long','push','pull','arms'];
+var ORDER=['hard','legs','long','push','pull','easy','arms'];
 function emptyPlan(){var p=[];for(var i=0;i<7;i++)p.push({gym:null,run:null});return p;}
 function has(day,s){return day.gym===s||day.run===s;}
 function either(A,B,a,b){return (has(A,a)&&has(B,b))||(has(A,b)&&has(B,a));}
-function scorePlan(days){
-  var sc=0,d,k,s,rest=false;
-  for(d=0;d<7;d++){
-    var D=days[d];
-    if(!D.gym&&!D.run) rest=true;
-    for(k=0;k<2;k++){s=k?D.run:D.gym;if(s){sc+=SESS[s].pri*20;if(SESS[s].def===d)sc+=4;}}
-    if(D.gym&&D.run){
-      sc-=25;
-      if(D.gym==='legs'&&D.run==='hard')sc-=60;
-      if(D.gym==='legs'&&D.run==='long')sc-=30;
-    }
-    if(d<6){
-      var B=days[d+1];
-      if(has(D,'legs')&&has(B,'hard'))sc-=40;
-      if(has(D,'legs')&&has(B,'long'))sc-=12;
-      if(has(D,'hard')&&has(B,'legs'))sc-=15;
-      if(either(D,B,'hard','long'))sc-=18;
-      if(either(D,B,'push','arms'))sc-=10;
-      if(either(D,B,'pull','arms'))sc-=6;
-    }
+/* How much two gym sessions work the same muscles: sets per muscle from the templates, weighted by how directly each exercise hits it (MUSCLE). */
+var OVL=null;
+function overlap(a,b){
+  if(!a||!b)return 0;
+  if(!OVL){
+    var vol={};OVL={};
+    Object.keys(TPL).forEach(function(id){var m={};TPL[id].forEach(function(e){var mm=MUSCLE[e[0]]||{};for(var x in mm)m[x]=(m[x]||0)+e[1]*mm[x];});vol[id]=m;});
+    Object.keys(vol).forEach(function(x){OVL[x]={};Object.keys(vol).forEach(function(y){var o=0;for(var k in vol[x])if(vol[y][k])o+=Math.min(vol[x][k],vol[y][k]);OVL[x][y]=o;});});
   }
-  var streak=0;
-  for(d=0;d<7;d++){
-    if(days[d].gym){streak++;if(streak>=3)sc-=8;}else streak=0;
+  return OVL[a]&&OVL[a][b]||0;
+}
+/* Penalty for day B coming straight after day D (each is {gym,run}). */
+var OVL_W=2.5;
+function nextDayPen(D,B){
+  var sc=0,dr=D.run,br=B.run;
+  if(D.gym==='legs'){if(br==='hard')sc-=40;else if(br==='long')sc-=12;}
+  if(dr==='hard'&&B.gym==='legs')sc-=15;
+  if(dr&&br){
+    if((dr==='hard'&&br==='long')||(dr==='long'&&br==='hard'))sc-=18;
+    else if(dr==='easy'||br==='easy')sc-=8;
   }
-  if(!rest)sc-=10;
+  /* gym sessions that share muscles (e.g. Shoulders & arms then Push) need a day between */
+  if(D.gym&&B.gym)sc-=overlap(D.gym,B.gym)*OVL_W;
   return sc;
 }
-function schedule(avail,fixed,start,pool){
+/* Builds the best week day by day. Each session is worth its priority; clashes (two sessions a day, legs before a hard run,
+   gym days that share muscles back to back, no rest day...) cost points. prev is the day before day 0 (last Sunday), so the
+   week also fits around what you did then. Days before start, and anything in fixed, stay as they are. */
+function schedule(avail,fixed,start,pool,prev){
   var days=fixed.map(function(x){return {gym:x.gym,run:x.run};});
   var placed={};
   days.forEach(function(x){if(x.gym)placed[x.gym]=1;if(x.run)placed[x.run]=1;});
-  var free=(pool||ORDER).filter(function(s){return !placed[s];});
+  var free=(pool||ORDER).filter(function(s){return !placed[s];}),used={},left=0;
+  var freeG=free.filter(function(s){return SESS[s].kind==='gym';}),freeR=free.filter(function(s){return SESS[s].kind==='run';});
+  free.forEach(function(s){left+=SESS[s].pri*20+12;});
   var best=null,bestScore=-Infinity;
-  function rec(i){
-    if(i===free.length){
-      var sc=scorePlan(days);
-      if(sc>bestScore){bestScore=sc;best=days.map(function(x){return {gym:x.gym,run:x.run};});}
-      return;
-    }
-    var s=free[i],k=SESS[s].kind;
-    for(var d=start;d<7;d++){
-      if(!avail[d][k]||days[d][k])continue;
-      days[d][k]=s;rec(i+1);days[d][k]=null;
-    }
-    rec(i+1);
+  function val(s,d){return SESS[s].pri*20+(SESS[s].def===d?(SESS[s].kind==='run'?12:4):0);}
+  function opts(d,k,list){
+    if(days[d][k])return [days[d][k]];
+    if(d<start||!avail[d][k])return [null];
+    var o=list.filter(function(s){return !used[s];});o.push(null);return o;
   }
-  rec(0);
+  function rec(d,sc,streak,rest){
+    if(d===7){if(!rest)sc-=10;if(sc>bestScore){bestScore=sc;best=days.map(function(x){return {gym:x.gym,run:x.run};});}return;}
+    if(sc+left<=bestScore)return; /* even placing everything left with no clashes can't beat the best so far */
+    var fg=days[d].gym,fr=days[d].run,go=opts(d,'gym',freeG),ro=opts(d,'run',freeR);
+    var P=d>0?days[d-1]:prev,PP=d>1?days[d-2]:d===1?prev:null;
+    for(var i=0;i<go.length;i++)for(var j=0;j<ro.length;j++){
+      var g=go[i],r=ro[j],D=days[d],x=0,st=0,nl=left;
+      D.gym=g;D.run=r;
+      if(g){x+=val(g,d);st=streak+1;if(st>=3)x-=8;if(!fg){used[g]=1;nl-=SESS[g].pri*20+12;}}
+      if(r){x+=val(r,d);if(!fr){used[r]=1;nl-=SESS[r].pri*20+12;}}
+      if(g&&r){x-=25;if(g==='legs')x-=r==='hard'?60:r==='long'?30:10;}
+      if(P)x+=nextDayPen(P,D);
+      if(PP&&PP.gym&&g)x-=overlap(PP.gym,g)*0.3;
+      var ol=left;left=nl;
+      rec(d+1,sc+x,st,rest||(!g&&!r));
+      left=ol;
+      if(g&&!fg)used[g]=0;if(r&&!fr)used[r]=0;
+    }
+    days[d].gym=fg;days[d].run=fr;
+  }
+  rec(0,0,0,false);
   return best;
 }
 /*SCHED-END*/
@@ -98,9 +114,26 @@ function fmtS(s){return fmtD(parse(s));}
 function weekIdx(key){return Math.round((parse(key)-parse(START))/864e5/7);}
 function blockWeek(key){var i=weekIdx(key);return ((i%12)+12)%12;}
 function isDeload(key){return weekIdx(key)>=0&&(blockWeek(key)===5);}
-function hardVariant(key){var b=blockWeek(key);if(weekIdx(key)>=0&&b===11)return 'trial';return b%2===0?'intervals':'tempo';}
-var IV_REPS=[4,0,5,0,5,0,5,0,6,0,6,0],TEMPO_MIN=[0,15,0,20,0,12,0,20,0,25,0,0],LONG_MIN=[40,45,45,50,50,35,50,55,55,60,60,30];
-function longInfo(key){var b=blockWeek(key),m=LONG_MIN[b],dl=isDeload(key);return {min:m,desc:m+' min at chatting pace'+(dl?' (lighter week)':''),body:'Run '+m+' min easy enough to talk the whole way. Slower than feels necessary: this is the run that brings your heart rate down.'+(dl?' It\u2019s a lighter week, so keep it relaxed.':'')+' Stretch after: hamstrings, hip flexors, calves, glutes.'};}
+function hardVariant(key){var b=blockWeek(key);if(weekIdx(key)>=0&&(b===11||b===3))return 'trial';return b%2===0?'intervals':'tempo';}
+var IV_REPS=[4,0,5,0,5,0,5,0,6,0,6,0],TEMPO_MIN=[0,15,0,20,0,12,0,20,0,25,0,0],LONG_MIN=[40,45,45,50,50,35,50,55,55,60,60,30],EASY_MIN=[25,30,30,30,35,20,35,35,40,40,40,25];
+function longInfo(key){var b=blockWeek(key),m=LONG_MIN[b],dl=isDeload(key);return {min:m,desc:m+' min at '+easyPace()+'/km'+(dl?' (lighter week)':''),body:'Run '+m+' min at about '+easyPace()+'/km, easy enough to talk the whole way. Slower than feels necessary: this is the run that brings your heart rate down.'+(dl?' It\u2019s a lighter week, so keep it relaxed.':'')+' Stretch after: hamstrings, hip flexors, calves, glutes.'};}
+function easyInfo(key){var b=blockWeek(key),m=EASY_MIN[b],dl=isDeload(key);return {min:m,desc:m+' min at '+easyPace()+'/km'+(dl?' (lighter week)':''),body:'Run '+m+' min at about '+easyPace()+'/km. It should feel easy the whole way: if you couldn\u2019t hold a conversation, slow down. Most of the fitness for a faster 5K comes from easy running like this, and keeping it easy means you\u2019re fresh for the hard run.'+(dl?' Lighter week, so keep it short and relaxed.':'')};}
+/* Current 5K fitness: where every run pace comes from. It starts from your estimate in Settings, then follows your runs.
+   A time trial or race since then replaces it (faster or slower); any other run that shows you're faster moves it down.
+   Intervals don't count. Old evidence drops out: time trials after 12 weeks, other runs after 8. */
+var FIT_DEFAULT={sec:1350,date:'2026-11-15'};
+function fitness(){
+  var f=(state.settings&&state.settings.fit5k)||FIT_DEFAULT,cur={sec:f.sec,src:'your starting estimate',date:f.date,est:true};
+  var c84=iso(addDays(todayD(),-84)),c56=iso(addDays(todayD(),-56));
+  var runs=state.runs.filter(function(r){return r.km>=3&&r.sec>0&&r.type!=='Intervals'&&r.date>=f.date;}).sort(function(a,b){return a.date<b.date?-1:1;});
+  var tts=runs.filter(function(r){return r.type==='Time trial / race'&&r.date>=c84;});
+  if(tts.length){var t=tts[tts.length-1];cur={sec:riegel(t.sec,t.km,5),src:'your time trial on '+fmtS(t.date),date:t.date};}
+  runs.forEach(function(r){if(r.date>=cur.date&&r.date>=c56){var p=riegel(r.sec,r.km,5);if(p<cur.sec)cur={sec:p,src:'your '+r.type.toLowerCase()+' run on '+fmtS(r.date),date:r.date};}});
+  return cur;
+}
+function fitPace(){return fitness().sec/5;}
+function easyPace(){var p=fitPace();return fmtPace(p+80)+'\u2013'+fmtPace(p+110);}
+function fitNote(){var f=fitness();return 'Paces come from your current 5K fitness: '+fmtTime(f.sec)+', from '+f.src+'. They update by themselves when you log a time trial or a faster run.';}
 function curWeekKey(){return iso(monday(todayD()));}
 function defaultWeekKey(){var c=curWeekKey();if(state&&state.weeks&&state.weeks[c])return c;return c<START?START:c;}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
@@ -121,7 +154,8 @@ function normalize(st){
   ['workouts','runs','weights','checkins','activities'].forEach(function(k){if(!Array.isArray(st[k]))st[k]=[];});
   if(!st.weeks||typeof st.weeks!=='object')st.weeks={};
   if(!st.settings||typeof st.settings!=='object')st.settings={};
-  if(!Array.isArray(st.goals))st.goals=[{id:'g1',kind:'run',km:5,sec:1199,base:1290,created:'2026-11-15'},{id:'g2',kind:'lift',ex:'Bench press',w:60,r:8,created:'2026-11-15'},{id:'g3',kind:'lift',ex:'Pull-ups',w:0,r:6,created:'2026-11-15'}];
+  if(!Array.isArray(st.goals))st.goals=[{id:'g1',kind:'run',km:5,sec:1199,base:1350,created:'2026-11-15'},{id:'g2',kind:'lift',ex:'Bench press',w:60,r:8,created:'2026-11-15'},{id:'g3',kind:'lift',ex:'Pull-ups',w:0,r:6,created:'2026-11-15'}];
+  st.goals.forEach(function(g){if(g.id==='g1'&&g.kind==='run'&&g.base===1290)g.base=1350;});
   return st;
 }
 var state=null;
@@ -140,13 +174,15 @@ var ui={pantryEdit:null,pantryFilter:'all',pantrySearch:'',foodView:'today',food
 function saveUi(){var o={ts:Date.now()};for(var k in ui)o[k]=ui[k];LS.set('tp-ui',o);}
 
 var tempWeeks={};
-function blankWeek(){
+/* The day before a week starts (its Sunday), if that week is already planned. */
+function prevDay(key){var pk=iso(addDays(parse(key),-7));if(pk<curWeekKey()&&!state.weeks[pk])return null;var pw=state.weeks[pk]||getWeek(pk);return pw.plan[6];}
+function blankWeek(key){
   var avail=[];for(var i=0;i<7;i++)avail.push({gym:true,run:true});
-  return {avail:avail,plan:schedule(avail,emptyPlan(),0),done:{}};
+  return {avail:avail,plan:schedule(avail,emptyPlan(),0,null,prevDay(key)),done:{}};
 }
 function getWeek(key){
   if(state.weeks[key])return state.weeks[key];
-  if(!tempWeeks[key])tempWeeks[key]=blankWeek();
+  if(!tempWeeks[key])tempWeeks[key]=blankWeek(key);
   return tempWeeks[key];
 }
 function ensureWeek(key){
@@ -171,7 +207,11 @@ function replan(key){
       if(d<start)fixed[d][k]=s;
     });
   }
-  w.plan=schedule(w.avail,fixed,start,w.pool);
+  w.plan=schedule(w.avail,fixed,start,w.pool,prevDay(key));
+  /* weeks after this one that you haven't touched yet are worked out again, so they fit around its new Sunday */
+  Object.keys(tempWeeks).forEach(function(k){if(k>key)delete tempWeeks[k];});
+  /* and the next saved week after it, if not started, is re-sorted too (it carries on to the one after) */
+  for(var i=1;i<=12;i++){var nk=iso(addDays(parse(key),7*i)),nw=state.weeks[nk];if(!nw)continue;if(!nw.pool&&nk>curWeekKey()&&!Object.keys(nw.done||{}).length)replan(nk);break;}
 }
 function hasGymK(w){return (w.pool||ORDER).some(function(s){return SESS[s].kind==='gym';});}
 function hasRunK(w){return (w.pool||ORDER).some(function(s){return SESS[s].kind==='run';});}
@@ -566,11 +606,13 @@ function shrinkImage(file){
 
 /* ---------- settings and backup ---------- */
 function renderSettings(){
-  var S=sett(),F=food(),kg=bodyKg(),h='<h2>Settings</h2><div class="card">';
+  var S=sett(),F=food(),kg=bodyKg(),FS=state.settings.fit5k||FIT_DEFAULT,FF=fitness(),h='<h2>Settings</h2><div class="card">';
   h+='<div class="row3"><label>Height (cm)<input id="st-h" type="number" inputmode="decimal" step="0.1" value="'+S.height+'"></label><label>Age<input id="st-age" type="number" inputmode="numeric" value="'+S.age+'"></label><label>Protein a day (g)<input id="st-p" type="number" inputmode="numeric" value="'+S.protein+'"></label></div>'+
     '<p class="hint" style="margin:0">Research supports 1.6–2.2g of protein per kg for building muscle: '+Math.round(kg*1.6)+'–'+Math.round(kg*2.2)+'g at your current weight (Morton et al., 2018).</p>'+
     '<div class="lbl2">Days you usually work from home</div><div class="chips">'+['Mon','Tue','Wed','Thu','Fri'].map(function(n,i){return '<button class="pill'+(S.wfh[i]?' on':'')+'" data-act="stwfh" data-i="'+i+'" aria-pressed="'+!!S.wfh[i]+'">'+n+'</button>';}).join('')+'</div>'+
     '<p class="hint" style="margin:0">On these days there’s no cycle to work, so the calorie target drops by about 200. If a week is different, use the button on the Today page for that day.</p>'+
+    '<div class="lbl2">Your 5K right now</div><div class="row2"><label>Minutes<input id="st-fm" type="number" inputmode="numeric" min="12" max="45" value="'+Math.floor(FS.sec/60)+'"></label><label>Seconds<input id="st-fs" type="number" inputmode="numeric" min="0" max="59" value="'+Math.round(FS.sec%60)+'"></label></div>'+
+    '<p class="hint" style="margin:0">Your best guess at an all-out 5K today. Every run pace is set from it. The app now uses <b>'+fmtTime(FF.sec)+'</b> (from '+FF.src+'). Time trials and faster runs update it by themselves, so you only need this if it feels wrong.</p>'+
     '<div class="err" id="st-err"></div><button class="btn primary" data-act="stsave">Save settings</button></div>';
   h+='<h2>Calorie auto-adjust</h2><div class="card"><p class="hint" style="margin:0">Every 2 weeks the app checks your weigh-ins from the last 3–5 weeks. If you’re gaining under 0.25kg a month it adds 150 kcal a day; over 1kg a month it takes 150 off. Rice, pasta, oats and bread portions scale to match.</p>'+
     '<div class="kv"><span>Current adjustment</span><b>'+(F.adj?(F.adj>0?'+':'')+F.adj+' kcal a day':'None yet')+'</b></div>'+
@@ -586,8 +628,15 @@ function renderSettings(){
 function backupText(){return JSON.stringify({app:'sub20-plan',exported:new Date().toISOString(),state:state});}
 function restoreSummary(){var r=RESTORE;return '<div class="notice">Backup from <b>'+esc(r.when)+'</b>: '+r.st.workouts.length+' workouts, '+r.st.runs.length+' runs, '+r.st.weights.length+' weigh-ins. This replaces everything in the app now.<div class="row2" style="margin-top:8px"><button class="btn" data-act="bkcancel">Cancel</button><button class="btn primary" data-act="bkrestore">Replace my data</button></div></div>';}
 
+/* Plan version 2 added a third run (easy, Thursday by default). Weeks already planned are re-planned once, keeping anything ticked off and days already gone. */
+function upgradePlan(){
+  if((state.settings.planV||1)>=2)return false;
+  var c=curWeekKey();
+  Object.keys(state.weeks).forEach(function(k){var w=state.weeks[k];if(k>=c&&!w.pool&&!planList(w).some(function(x){return x.sid==='easy';}))replan(k);});
+  state.settings.planV=2;return true;
+}
 function render(){
-  if(mode!=='pending'&&(stravaImport()|autoAdjust()))save();
+  if(mode!=='pending'&&(upgradePlan()|stravaImport()|autoAdjust()))save();
   var root=document.getElementById('root');
   var body=ui.tab==='today'?renderToday():ui.tab==='plan'?renderPlan():ui.tab==='log'?renderLog():ui.tab==='food'?renderFood():ui.tab==='settings'?renderSettings():renderProgress();
   root.innerHTML='<header class="top"><div class="top-inner"><div class="brand"><h1>Sub-<span>20</span> Plan</h1><div class="brand-r"><div id="status" class="status"><i></i>Saved</div><button class="gear" data-act="tab" data-tab="settings" aria-label="Settings and backup" aria-pressed="'+(ui.tab==='settings')+'"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="16" cy="7" r="2.2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="10" cy="17" r="2.2" fill="none" stroke="currentColor" stroke-width="2"/></svg></button></div></div>'+
@@ -599,16 +648,17 @@ function render(){
 
 function hardInfo(variant,key){
   key=key||ui.weekKey;var b=blockWeek(key),nr=IV_REPS[b]||5,tm=TEMPO_MIN[b]||20,dl=isDeload(key);
-  var p=goalPace5(),g=activeRunGoal(),tk=g&&g.km<=10?g.km:5;
-  var iv=fmtPace(p)+'\u2013'+fmtPace(p+5),tp=fmtPace(p+25)+'\u2013'+fmtPace(p+30);
-  if(variant==='intervals')return {title:'Intervals',reps:nr,desc:nr+' \u00d7 1 km at '+iv+'/km',body:'Warm up 10 min easy. Run '+nr+' \u00d7 1 km at '+iv+'/km with a 2 min jog between reps. Cool down 10 min. The number of reps builds over the 12-week block. Paces come from your current run goal.',type:'Intervals'};
-  if(variant==='tempo')return {title:'Tempo run',min:tm,desc:tm+' min at '+tp+'/km'+(dl?' (lighter week)':''),body:'Warm up 10 min easy. Run '+tm+' min at '+tp+'/km. It should feel comfortably hard: you can say a few words, but you couldn\u2019t chat. Cool down 10 min.'+(dl?' Lighter week: shorter than usual so you recover.':' It gets longer over the 12-week block.')+' Paces come from your current run goal.',type:'Tempo'};
-  return {title:'Time trial',desc:'Flat-out '+fmtKm(tk)+' to see where you are',body:'Warm up 15 min with a few short strides. Run '+fmtKm(tk)+' at your best effort on a flat route. Log it as a time trial so it counts towards your goal.',type:'Time trial / race'};
+  var p=fitPace(),g=activeRunGoal(),tk=g&&g.km<=10?g.km:5,fn=' '+fitNote();
+  var iv=fmtPace(p-3)+'\u2013'+fmtPace(p+2),tp=fmtPace(p+22)+'\u2013'+fmtPace(p+28);
+  if(variant==='intervals')return {title:'Intervals',reps:nr,desc:nr+' \u00d7 1 km at '+iv+'/km',body:'Warm up 10 min easy. Run '+nr+' \u00d7 1 km at '+iv+'/km with a 2 min jog between reps. Cool down 10 min. That\u2019s about your current 5K race pace: it should feel hard but controlled, and the last rep should be as fast as the first. The number of reps builds over the 12-week block.'+fn,type:'Intervals'};
+  if(variant==='tempo')return {title:'Tempo run',min:tm,desc:tm+' min at '+tp+'/km'+(dl?' (lighter week)':''),body:'Warm up 10 min easy. Run '+tm+' min at '+tp+'/km. It should feel comfortably hard: you can say a few words, but you couldn\u2019t chat. Cool down 10 min.'+(dl?' Lighter week: shorter than usual so you recover.':' It gets longer over the 12-week block.')+fn,type:'Tempo'};
+  return {title:'Time trial',desc:'Flat-out '+fmtKm(tk)+' to see where you are',body:'Warm up 15 min with a few short strides. Run '+fmtKm(tk)+' at your best effort on a flat route. Log it as a time trial: it resets the paces for your other runs and counts towards your goal. Your current estimate is '+fmtTime(fitness().sec)+' for 5K, so start at about '+fmtPace(p)+'/km and speed up over the last kilometre if you can.',type:'Time trial / race'};
 }
 function sessHTML(key,d,k,sid,w,variant,lockDone){
   var S=SESS[sid],isDone=!!w.done[sid],title=S.name,desc=S.blurb,body='';
   if(sid==='hard'){var h=hardInfo(variant,key);title=h.title;desc=h.desc;body='<div class="sbody">'+h.body+'</div>';}
   else if(sid==='long'){var li=longInfo(key);desc=li.desc;body='<div class="sbody">'+li.body+'</div>';}
+  else if(sid==='easy'){var ei=easyInfo(key);desc=ei.desc;body='<div class="sbody">'+ei.body+'</div>';}
   else{
     var anyT=false;
     body=(isDeload(key)?'<div class="dlnote">Lighter week: one set fewer per exercise, same weights, and stop 3\u20134 reps short of failure. It lets your body catch up so you come back stronger.</div>':'')+'<ol class="exlist">'+TPL[sid].map(function(e){var sg=suggest(e,key);if(sg.sets)anyT=true;return '<li><span>'+e[0]+'</span><span class="num">'+(sg.sets?'<b class="tgt-'+sg.kind+'">'+fmtTarget(sg.sets)+'</b>':e[1]+' × '+rr(e))+'</span></li>';}).join('')+'</ol>';
@@ -913,7 +963,7 @@ function runStatus(g){
     if(r.km>=minKm&&r.date>=cutoff){var p=riegel(r.sec,r.km,D);if(st.pred==null||p<st.pred)st.pred=p;}
   });
   var cands=[st.actual,st.pred].filter(function(x){return x!=null;});
-  st.current=cands.length?Math.min.apply(null,cands):(g.base||null);
+  st.current=cands.length?Math.min.apply(null,cands):riegel(fitness().sec,5,D);
   st.estimated=!cands.length;
   var pts=runs.filter(function(r){return EFFORT[r.type]&&r.km>=minKm&&r.date>=c84;}).map(function(r){return {t:parse(r.date).getTime(),y:riegel(r.sec,r.km,D)};});
   if(pts.length>=2&&(pts[pts.length-1].t-pts[0].t)>=14*864e5){
@@ -1143,7 +1193,7 @@ function fBurn(ds){
   var S=sett(),kg=bodyKg(),bmr=10*kg+6.25*S.height-5*S.age+5,base=bmr*1.3,d=dayIdx(parse(ds)),t=trainOn(ds),parts=[],burn=base;
   if(!isWfh(ds)){burn+=195;parts.push('cycling to work');}
   if(t.gym){burn+=t.gym==='legs'?280:250;parts.push(SESS[t.gym].name.toLowerCase()+' session');}
-  if(t.run){var hv=t.run==='hard'?hardVariant(t.key):'long',hi2=t.run==='hard'?hardInfo(hv,t.key):null;burn+=t.run==='long'?Math.round(LONG_MIN[blockWeek(t.key)]*10.5):hv==='trial'?400:hv==='intervals'?180+50*hi2.reps:180+12.5*hi2.min;parts.push(t.run==='long'?'long run':hi2.title.toLowerCase());}
+  if(t.run){var hv=t.run==='hard'?hardVariant(t.key):'long',hi2=t.run==='hard'?hardInfo(hv,t.key):null;burn+=t.run==='long'?Math.round(LONG_MIN[blockWeek(t.key)]*10.5):t.run==='easy'?Math.round(EASY_MIN[blockWeek(t.key)]*10.5):hv==='trial'?400:hv==='intervals'?180+50*hi2.reps:180+12.5*hi2.min;parts.push(t.run==='long'?'long run':t.run==='easy'?'easy run':hi2.title.toLowerCase());}
   extrasOn(ds).forEach(function(x){burn+=x.k;parts.push(x.n.toLowerCase());});
   var adj=(state.food&&state.food.adj)||0;
   return {burn:burn,parts:parts,adj:adj,target:Math.round((burn*1.07+adj)/50)*50};
@@ -1537,7 +1587,7 @@ function markDone(date,sid){var key=iso(monday(parse(date)));var w=ensureWeek(ke
 /* ---------- Strava: new runs from Strava are added to the log (see js/sync.js) ---------- */
 var STRAVA_RUNS=[];
 var HARD_TYPE={intervals:'Intervals',tempo:'Tempo',trial:'Time trial / race'};
-function runSess(type){return type==='Long easy'?'long':(type==='Intervals'||type==='Tempo'||type==='Time trial / race')?'hard':null;}
+function runSess(type){return type==='Long easy'?'long':type==='Easy'?'easy':(type==='Intervals'||type==='Tempo'||type==='Time trial / race')?'hard':null;}
 /* Guess the run type: from the activity's name first, then what was planned that day, then Strava's own tags. */
 function stravaType(a){
   var n=a.name||'';
@@ -1549,6 +1599,7 @@ function stravaType(a){
   var t=trainOn(a.date);
   if(t.run==='hard')return HARD_TYPE[hardVariant(t.key)]||'Tempo';
   if(t.run==='long')return 'Long easy';
+  if(t.run==='easy')return 'Easy';
   if(a.workout===2)return 'Long easy';
   return 'Easy';
 }
@@ -1625,7 +1676,10 @@ document.addEventListener('click',function(ev){
     if(!hh||hh<120||hh>230){er.textContent='Height should be in cm, between 120 and 230.';return;}
     if(!ag||ag<14||ag>90){er.textContent='Check your age.';return;}
     if(!pp||pp<50||pp>300){er.textContent='Protein should be between 50 and 300g.';return;}
-    state.settings.height=Math.round(hh*10)/10;state.settings.age=Math.round(ag);state.settings.protein=Math.round(pp);render();save();toast('Settings saved. Calorie targets updated.');return;
+    var fm=num('st-fm'),fs=num('st-fs')||0,fsec=fm*60+fs,FS0=state.settings.fit5k||FIT_DEFAULT;
+    if(!fm||fsec<12*60||fsec>45*60||fs>59){er.textContent='Your 5K should be between 12 and 45 minutes.';return;}
+    if(fsec!==Math.round(FS0.sec))state.settings.fit5k={sec:fsec,date:iso(todayD())};
+    state.settings.height=Math.round(hh*10)/10;state.settings.age=Math.round(ag);state.settings.protein=Math.round(pp);render();save();toast('Settings saved. Calorie targets and run paces updated.');return;
   }
   if(act==='stadjreset'){
     if(!b.classList.contains('armed')){b.classList.add('armed');b.textContent='Tap again to reset';return;}
@@ -1668,7 +1722,7 @@ document.addEventListener('click',function(ev){
     var s2=b.getAttribute('data-sid'),dd=+b.getAttribute('data-d');
     ui.logDate=iso(addDays(parse(ui.weekKey),dd));
     if(SESS[s2].kind==='gym'){ui.logKind='gym';ui.logSession=s2;}
-    else{ui.logKind='run';ui.runType=s2==='long'?'Long easy':hardInfo(hardVariant(ui.weekKey)).type;}
+    else{ui.logKind='run';ui.runType=s2==='long'?'Long easy':s2==='easy'?'Easy':hardInfo(hardVariant(ui.weekKey)).type;}
     setTab('log');return;
   }
   if(act==='lk'){ui.logKind=b.getAttribute('data-k');saveUi();render();return;}
@@ -1717,6 +1771,7 @@ document.addEventListener('click',function(ev){
     state.runs.push(rob);
     if(!isX&&(type==='Intervals'||type==='Tempo'||type==='Time trial / race'))markDone(rdate,'hard');
     if(!isX&&type==='Long easy')markDone(rdate,'long');
+    if(!isX&&type==='Easy')markDone(rdate,'easy');
     ui.logDate=null;ui.runType=null;
     render();save();toast(type+' saved: '+fmtPace(sec/km)+'/km.');return;
   }
